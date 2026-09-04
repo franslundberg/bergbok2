@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "periods": [
+    {
+      "id": "Start",
+      "kind": "start",
+      "end": "2026-05-11",
+      "documents": "Start"
+    },
+    {
+      "id": "2026-05",
+      "kind": "ordinary",
+      "start": "2026-05-12",
+      "end": "2026-05-31",
+      "documents": "2026-05"
+    },
+    {
+      "id": "2026-06",
+      "kind": "ordinary",
+      "start": "2026-06-01",
+      "end": "2026-06-30",
+      "documents": "2026-06"
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.bergbok.se/core/module-outcome-1.0.schema.json",
+  "title": "Bergbok ModuleOutcome 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "kind",
+    "domain",
+    "case_ref",
+    "proposed_changes",
+    "projected_state",
+    "canonical_outputs",
+    "questions",
+    "warnings",
+    "evidence",
+    "review",
+    "provenance",
+    "reasons"
+  ],
+  "properties": {
+    "contract_version": { "const": "1.0" },
+    "kind": { "enum": ["proposal", "needs_input", "out_of_scope"] },
+    "domain": { "type": "string", "minLength": 1 },
+    "case_ref": { "$ref": "content-ref.schema.json" },
+    "proposed_changes": { "type": "array" },
+    "projected_state": {
+      "oneOf": [
+        { "$ref": "#/$defs/sealed" },
+        { "type": "null" }
+      ]
+    },
+    "canonical_outputs": { "type": "object" },
+    "questions": { "type": "array" },
+    "warnings": { "type": "array" },
+    "evidence": { "type": "array" },
+    "review": {
+      "type": "object",
+      "properties": {
+        "language": { "enum": ["sv", "en"] }
+      }
+    },
+    "provenance": { "type": "object" },
+    "reasons": { "type": "array" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "proposal" } } },
+      "then": {
+        "properties": {
+          "projected_state": { "$ref": "#/$defs/sealed" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "needs_input" } } },
+      "then": {
+        "properties": {
+          "projected_state": { "type": "null" },
+          "questions": { "minItems": 1 },
+          "proposed_changes": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "out_of_scope" } } },
+      "then": {
+        "properties": {
+          "projected_state": { "type": "null" },
+          "reasons": { "minItems": 1 },
+          "proposed_changes": { "maxItems": 0 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sealed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "payload"],
+      "properties": {
+        "ref": { "$ref": "content-ref.schema.json" },
+        "payload": {}
+      }
+    }
+  }
+}

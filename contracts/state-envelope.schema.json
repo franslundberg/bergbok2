@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.bergbok.se/core/state-envelope-1.0.schema.json",
+  "title": "Bergbok StateEnvelope sealed bundle 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ref", "payload"],
+  "properties": {
+    "ref": { "$ref": "content-ref.schema.json" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_version", "company_id", "sequence", "preceding_state_ref", "core", "domains"],
+      "properties": {
+        "contract_version": { "const": "1.0" },
+        "company_id": { "type": "string", "minLength": 1 },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "preceding_state_ref": {
+          "oneOf": [
+            { "$ref": "content-ref.schema.json" },
+            { "type": "null" }
+          ]
+        },
+        "core": { "type": "object" },
+        "domains": {
+          "type": "object",
+          "additionalProperties": { "type": "object" }
+        }
+      }
+    }
+  }
+}

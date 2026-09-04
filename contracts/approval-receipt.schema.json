@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.bergbok.se/core/approval-receipt-1.0.schema.json",
+  "title": "Bergbok ApprovalReceipt 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ref", "payload"],
+  "properties": {
+    "ref": { "$ref": "content-ref.schema.json" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "company_id",
+        "period_id",
+        "domain",
+        "decision",
+        "actor",
+        "authority",
+        "approval_scope",
+        "note",
+        "timestamp",
+        "decided_at",
+        "run_ref",
+        "complete_run_sha256",
+        "case_ref",
+        "outcome_sha256",
+        "proposal_digest",
+        "exact_inputs",
+        "resulting_state_ref",
+        "published_state_ref"
+      ],
+      "properties": {
+        "contract_version": { "const": "1.0" },
+        "company_id": { "type": "string", "minLength": 1 },
+        "period_id": { "type": "string", "minLength": 1 },
+        "domain": { "type": "string", "minLength": 1 },
+        "decision": { "enum": ["approved", "rejected"] },
+        "actor": {
+          "type": "object",
+          "required": ["id", "role"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "role": { "type": "string", "minLength": 1 }
+          }
+        },
+        "authority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "role"],
+          "properties": {
+            "kind": { "const": "role" },
+            "role": { "type": "string", "minLength": 1 }
+          }
+        },
+        "approval_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["company_id", "period_id", "domain", "case_ref", "run_ref", "proposed_changes"],
+          "properties": {
+            "company_id": { "type": "string", "minLength": 1 },
+            "period_id": { "type": "string", "minLength": 1 },
+            "domain": { "type": "string", "minLength": 1 },
+            "case_ref": { "$ref": "content-ref.schema.json" },
+            "run_ref": { "$ref": "content-ref.schema.json" },
+            "proposed_changes": { "type": "array" }
+          }
+        },
+        "note": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "decided_at": { "type": "string", "format": "date-time" },
+        "run_ref": { "$ref": "content-ref.schema.json" },
+        "complete_run_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "case_ref": { "$ref": "content-ref.schema.json" },
+        "outcome_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "proposal_digest": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "exact_inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["docset_ref", "previous_state_ref", "upstream_refs"],
+          "properties": {
+            "docset_ref": { "$ref": "content-ref.schema.json" },
+            "previous_state_ref": { "$ref": "content-ref.schema.json" },
+            "upstream_refs": {
+              "type": "array",
+              "items": { "$ref": "content-ref.schema.json" }
+            }
+          }
+        },
+        "resulting_state_ref": {
+          "oneOf": [{ "$ref": "content-ref.schema.json" }, { "type": "null" }]
+        },
+        "published_state_ref": {
+          "oneOf": [{ "$ref": "content-ref.schema.json" }, { "type": "null" }]
+        }
+      }
+    }
+  }
+}

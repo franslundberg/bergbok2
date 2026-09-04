@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "period_id": "2026-03",
+  "documents": [
+    {
+      "doc_id": "260303-1",
+      "filename": "software-invoice.pdf",
+      "media_type": "application/pdf",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}

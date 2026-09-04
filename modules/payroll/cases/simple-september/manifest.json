@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "case_id": "simple-september",
+  "title": "Simple September payroll from Markdown evidence",
+  "company_id": "example-ab",
+  "company_name": "Example AB",
+  "period": {
+    "id": "2026-09",
+    "kind": "ordinary",
+    "start": "2026-09-01",
+    "end": "2026-09-30"
+  },
+  "previous_state": "input/state/state.json",
+  "documents": [
+    {
+      "document_id": "employment-agreement",
+      "path": "input/docset/employment-agreement.md",
+      "media_type": "text/markdown",
+      "role": "payroll-evidence"
+    },
+    {
+      "document_id": "absence-report",
+      "path": "input/docset/absence-report.md",
+      "media_type": "text/markdown",
+      "role": "payroll-evidence"
+    },
+    {
+      "document_id": "employee-messages",
+      "path": "input/docset/employee-messages.md",
+      "media_type": "text/markdown",
+      "role": "payroll-evidence"
+    }
+  ],
+  "variant_ref": {
+    "id": "simple-payroll-demo-v1",
+    "version": "1"
+  },
+  "effective_policies": {
+    "core": {
+      "country": "SE",
+      "currency": "SEK"
+    },
+    "payroll": {
+      "profile": "simple-payroll-demo-v1",
+      "daily_divisor": 30,
+      "withholding_basis_points": 3000,
+      "employer_contribution_basis_points": 3142
+    }
+  },
+  "synthetic": true
+}

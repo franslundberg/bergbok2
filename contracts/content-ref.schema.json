@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.bergbok.se/core/content-ref-1.0.schema.json",
+  "title": "Bergbok ContentRef 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "stable_id", "version", "sha256"],
+  "properties": {
+    "schema_id": { "type": "string", "minLength": 1 },
+    "schema_version": { "type": "string", "minLength": 1 },
+    "stable_id": { "type": "string", "minLength": 1 },
+    "version": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "string", "minLength": 1 }
+      ]
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

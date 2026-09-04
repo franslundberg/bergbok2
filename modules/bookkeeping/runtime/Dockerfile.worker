@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+      bash binutils ca-certificates coreutils curl file findutils gawk grep jq \
+      imagemagick poppler-utils python-is-python3 python3 python3-pil qpdf ripgrep sed \
+      tesseract-ocr tesseract-ocr-eng tesseract-ocr-swe unzip zip \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/convert /usr/local/bin/magick \
+    && groupadd --system --gid 10001 bergbok \
+    && useradd --system --uid 10001 --gid bergbok --home-dir /workspace/work --shell /usr/sbin/nologin bergbok \
+    && mkdir -p /workspace/input /workspace/context /workspace/work /workspace/output \
+    && chown -R 10001:10001 /workspace
+
+WORKDIR /workspace
+USER 10001:10001
+CMD ["sleep", "infinity"]

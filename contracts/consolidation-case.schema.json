@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.bergbok.se/core/consolidation-case-1.0.schema.json",
+  "title": "Bergbok ConsolidationCase sealed bundle 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ref", "payload"],
+  "properties": {
+    "ref": { "$ref": "content-ref.schema.json" },
+    "payload": {
+      "type": "object",
+      "required": [
+        "contract_version",
+        "company_id",
+        "domain",
+        "period",
+        "docset",
+        "previous_state",
+        "effective_policies",
+        "upstream_results"
+      ],
+      "properties": {
+        "contract_version": { "const": "1.0" },
+        "company_id": { "type": "string", "minLength": 1 },
+        "domain": { "type": "string", "minLength": 1 },
+        "language": { "enum": ["sv", "en"] },
+        "period": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind", "end"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "kind": { "enum": ["start", "import", "ordinary"] },
+            "start": { "type": "string", "format": "date" },
+            "end": { "type": "string", "format": "date" }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "kind": { "const": "ordinary" } } },
+              "then": { "required": ["start"] },
+              "else": { "not": { "required": ["start"] } }
+            }
+          ]
+        },
+        "docset": { "$ref": "#/$defs/sealed" },
+        "previous_state": { "$ref": "state-envelope.schema.json" },
+        "effective_policies": { "type": "object" },
+        "upstream_results": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sealed" }
+        },
+        "upstream_snapshot": {
+          "type": "array",
+          "items": { "$ref": "content-ref.schema.json" }
+        },
+        "context": { "type": "object" },
+        "prepared_by": { "type": "object" },
+        "prepared_at": { "type": "string", "format": "date-time" },
+        "group_digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  },
+  "$defs": {
+    "sealed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "payload"],
+      "properties": {
+        "ref": { "$ref": "content-ref.schema.json" },
+        "payload": {}
+      }
+    }
+  }
+}

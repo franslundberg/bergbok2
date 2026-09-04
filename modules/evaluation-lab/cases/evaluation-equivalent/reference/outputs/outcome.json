@@ -1,0 +1,57 @@
+{
+  "kind": "proposal",
+  "domain": "bookkeeping",
+  "proposed_changes": [
+    {
+      "kind": "transaction",
+      "verification_id": "A1"
+    }
+  ],
+  "canonical_outputs": {
+    "bookkeeping": {
+      "schema_version": "2.0",
+      "organization": {
+        "name": "Example AB",
+        "organization_number": "559999-9999"
+      },
+      "ledger": {
+        "currency": "SEK",
+        "transactions": [
+          {
+            "verification_id": "A1",
+            "date": "2026-03-03",
+            "description": "Software service",
+            "evidence_ids": ["260303-1"],
+            "lines": [
+              {
+                "account": "6540",
+                "account_name": "IT services",
+                "debit": "100.00 SEK",
+                "credit": "0.00 SEK"
+              },
+              {
+                "account": "1930",
+                "account_name": "Bank",
+                "debit": "0.00 SEK",
+                "credit": "100.00 SEK"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "evidence": [
+    {
+      "doc_id": "260303-1",
+      "supports": "A1"
+    }
+  ],
+  "review": {
+    "summary": "One software purchase paid from the bank account"
+  },
+  "provenance": {
+    "reference": true,
+    "approved_before_trials": true
+  }
+}

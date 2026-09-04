@@ -1,0 +1,40 @@
+{
+  "name": "@bergbok/modular-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Executable modular-monolith prototype for the Bergbok System Concept",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./index.mjs",
+    "./contracts": "./contracts/src/index.mjs",
+    "./company-record": "./modules/company-record/src/index.mjs",
+    "./bookkeeping": "./modules/bookkeeping/src/index.mjs",
+    "./payroll": "./modules/payroll/src/index.mjs",
+    "./artifacts": "./modules/artifacts/src/index.mjs",
+    "./evaluation-lab": "./modules/evaluation-lab/src/index.mjs",
+    "./evaluation-lab/directory-adapter": "./modules/evaluation-lab/src/directory-adapter.mjs"
+  },
+  "scripts": {
+    "check": "node --check index.mjs && node --test --test-reporter=./dev/rounded-spec-reporter.mjs",
+    "test": "node --test --test-reporter=./dev/rounded-spec-reporter.mjs",
+    "test:company-record": "node --test --test-reporter=./dev/rounded-spec-reporter.mjs modules/company-record/test/*.test.mjs",
+    "test:bookkeeping": "node --test --test-reporter=./dev/rounded-spec-reporter.mjs modules/bookkeeping/test/*.test.mjs",
+    "test:payroll": "node --test --test-reporter=./dev/rounded-spec-reporter.mjs modules/payroll/test/*.test.mjs",
+    "test:artifacts": "node --test --test-reporter=./dev/rounded-spec-reporter.mjs modules/artifacts/test/*.test.mjs",
+    "test:evaluation": "node --test --test-reporter=./dev/rounded-spec-reporter.mjs modules/evaluation-lab/test/*.test.mjs",
+    "test:contracts": "node --test --test-reporter=./dev/rounded-spec-reporter.mjs contracts/test/*.test.mjs",
+    "test:dev": "node --test --test-reporter=./dev/rounded-spec-reporter.mjs dev/test/*.test.mjs",
+    "test:integration": "node --test --test-reporter=./dev/rounded-spec-reporter.mjs integration/test/*.test.mjs",
+    "demo": "node integration/demo/run.mjs",
+    "demo:modules": "npm run demo:company-record && npm run demo:bookkeeping:offline && npm run demo:payroll && npm run demo:artifacts && npm run demo:evaluation",
+    "demo:company-record": "node modules/company-record/demo/run.mjs",
+    "demo:bookkeeping": "node modules/bookkeeping/demo/cli.mjs",
+    "demo:bookkeeping:offline": "node modules/bookkeeping/demo/run.mjs",
+    "demo:payroll": "node modules/payroll/demo/run.mjs",
+    "demo:artifacts": "node modules/artifacts/demo/run.mjs",
+    "demo:evaluation": "node modules/evaluation-lab/demo/run.mjs"
+  }
+}

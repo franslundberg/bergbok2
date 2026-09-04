@@ -1,0 +1,18 @@
+{
+  "sequence": 0,
+  "core": {
+    "organization": {
+      "name": "Example AB",
+      "organization_number": "559999-9999"
+    }
+  },
+  "domains": {
+    "bookkeeping": {
+      "schema_version": "2.0",
+      "currency": "SEK",
+      "ledger_balances": {
+        "1930": "1000.00 SEK"
+      }
+    }
+  }
+}

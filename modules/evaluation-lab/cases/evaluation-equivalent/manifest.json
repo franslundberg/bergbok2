@@ -1,0 +1,50 @@
+{
+  "schema_id": "se.bergbok.evaluation-case",
+  "schema_version": "2.0",
+  "case_id": "evaluation-equivalent",
+  "case_version": 1,
+  "company_id": "example-ab",
+  "domain": "bookkeeping",
+  "period": {
+    "id": "2026-03",
+    "kind": "ordinary",
+    "start": "2026-03-01",
+    "end": "2026-03-31"
+  },
+  "effective_policies": {
+    "core": {
+      "country": "SE",
+      "currency": "SEK",
+      "accounting_method": "invoice",
+      "fiscal_year": {
+        "start": "2026-01-01",
+        "end": "2026-12-31"
+      }
+    },
+    "bookkeeping": {
+      "profile": "se-private-ab-invoice-calendar-demo-v1",
+      "verification_series": "A"
+    }
+  },
+  "input": {
+    "state": "input/state/state.json",
+    "docset": "input/docset/docset.json"
+  },
+  "reference": {
+    "state": "reference/state/state.json",
+    "outputs": "reference/outputs/outcome.json"
+  },
+  "grading_manual": "grading-manual.md",
+  "grading_profile": {
+    "id": "allowed-account-alternative-v2",
+    "version": "2",
+    "account_tolerance": "0.00 SEK",
+    "account_equivalence_groups": [
+      ["6540", "6550"]
+    ],
+    "decision": {
+      "max_deterministic_failures": 0,
+      "max_semantic_errors": 0
+    }
+  }
+}

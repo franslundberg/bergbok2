@@ -1,0 +1,27 @@
+{
+  "contract_version": "1.0",
+  "schema_version": "2.0",
+  "status": "approved",
+  "company_id": "example-ab",
+  "through_period_id": "2026-08",
+  "rules_profile": {
+    "id": "simple-payroll-demo-v1",
+    "version": "1"
+  },
+  "employees": [
+    {
+      "employee_id": "employee-1",
+      "name": "Kim Example",
+      "personal_identity_number": "19900101-0000",
+      "year_to_date": {
+        "reporting_year": "2026",
+        "gross_pay": "80000.00 SEK",
+        "tax_withheld": "24000.00 SEK",
+        "employer_contribution_basis": "80000.00 SEK",
+        "employer_contribution": "25136.00 SEK",
+        "net_pay": "56000.00 SEK"
+      },
+      "last_payment_date": "2026-08-25"
+    }
+  ]
+}

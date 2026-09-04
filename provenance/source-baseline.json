@@ -1,0 +1,36 @@
+{
+  "captured_on": "2026-09-03",
+  "purpose": "Read-only characterization evidence consulted before the modular implementation",
+  "aggregate_hash_algorithm": "SHA-256 of sorted local shasum output for package.json plus src, config, and test files; paths are included",
+  "sources": [
+    {
+      "name": "Demo 4",
+      "path": "/Users/f/fl/bergbok1/demo4",
+      "files_hashed": 25,
+      "aggregate_sha256": "c7510b45d6a8b5b00c47c42484aa5c78ce21228ead4f0de07a68ec5e65f59151",
+      "baseline_test_result": "35 passed, 0 failed"
+    },
+    {
+      "name": "Demo 7",
+      "path": "/Users/f/fl/bergbok1/demo7",
+      "files_hashed": 37,
+      "aggregate_sha256": "5afe17453f00d8047586847e17aeb635401ef77da264e3a98007f34408f77fd3",
+      "baseline_test_result": "57 passed, 0 failed, 4 skipped"
+    },
+    {
+      "name": "Demo 8",
+      "path": "/Users/f/fl/bergbok1/demo8",
+      "files_hashed": 38,
+      "aggregate_sha256": "b04451da1a9a31cfadde6232fccbe6ea6c8f6aa699c01e09e946ddd666e2a8b2",
+      "baseline_test_result": "66 passed, 3 failed, 5 skipped",
+      "baseline_note": "The three pre-existing failures expect 52 capture files and 10 log-context files, while the current corpus contains 54 and 12 respectively. The corpus was not changed."
+    },
+    {
+      "name": "Demo 9",
+      "path": "/Users/f/fl/bergbok1/demo9",
+      "files_hashed": 27,
+      "aggregate_sha256": "41db85ab22ef9f1259fda344932d04b89eede673a807af0385b673b183d7dfe4",
+      "baseline_test_result": "22 passed, 0 failed, 2 skipped"
+    }
+  ]
+}
