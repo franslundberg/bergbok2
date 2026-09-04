@@ -1,0 +1,19 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+      bash ca-certificates coreutils curl file findutils gawk grep jq \
+      poppler-utils python3 qpdf ripgrep sed unzip zip \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 bergbok \
+    && useradd --system --uid 10001 --gid bergbok --home-dir /workspace/work --shell /usr/sbin/nologin bergbok \
+    && mkdir -p /workspace/files /workspace/work \
+    && chown -R 10001:10001 /workspace
+
+WORKDIR /workspace
+USER 10001:10001
+CMD ["sleep", "infinity"]

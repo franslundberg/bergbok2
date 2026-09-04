@@ -6,3 +6,6 @@ node_modules/
 coverage/
 **/generated/
 **/.tmp/
+var/
+apps/web/.next/
+apps/web/node_modules/

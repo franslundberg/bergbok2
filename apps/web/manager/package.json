@@ -1,0 +1,9 @@
+{
+  "name": "bergbok-chat-workspace-manager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "dockerode": "^5.0.1"
+  }
+}

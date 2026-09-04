@@ -42,7 +42,7 @@ SEB, seb.se.
 Bokföring
 =============
 
-* Kontantmetoden används.
+* Faktureringsmetoden används.
 * Moms redovisas per kvartal. Efter varje kvartal ska momsen beräknas och bokföras.
 * Vanlig BAS-kontoplan ska användas.
 * Anläggningstillgångar undviks om möjligt.
