@@ -500,7 +500,7 @@ async function approve(paths, companyId, clock, runRefInput, decisionInput) {
     await writeImmutableSealed(paths, nextState);
 
     const receipt = await createReceipt(paths, catalog, companyId, clock, run, caseBundle, decision, nextState.ref);
-    const outputSnapshot = createOutputSnapshot(run, receipt.ref, "approved");
+    const outputSnapshot = createOutputSnapshot(run, caseBundle, receipt.ref, "approved");
     await writeImmutableSealed(paths, outputSnapshot);
 
     let upstreamResult = null;
@@ -630,13 +630,15 @@ async function read(paths, companyId, refOrQuery) {
     const runRef = normalizeRef(refOrQuery.runRef ?? refOrQuery.run_ref, "runRef");
     const run = await readImmutableSealed(paths, runRef, "ConsolidationRun");
     await validateRun(paths, run, companyId);
+    const caseBundle = await readImmutableSealed(paths, run.payload.case_ref, "snapshot case");
+    await validateCase(paths, caseBundle, companyId);
     const approvedRef = catalog.output_snapshots[contentRefKey(run.ref)];
     if (approvedRef) {
       const snapshot = await readImmutableSealed(paths, approvedRef, "approved output snapshot");
-      validateOutputSnapshot(snapshot, run, "approved");
+      validateOutputSnapshot(snapshot, run, caseBundle, "approved");
       return freezeResult(snapshot);
     }
-    return freezeResult(createOutputSnapshot(run, null, "preliminary"));
+    return freezeResult(createOutputSnapshot(run, caseBundle, null, "preliminary"));
   }
   fail("INVALID_ARGUMENT", `Unknown read query kind: ${kind}`);
 }
@@ -886,22 +888,30 @@ async function createPayrollUpstream(paths, catalog, companyId, periodId, run, r
   return wrapper;
 }
 
-function createOutputSnapshot(run, receiptRef, approvalStatus) {
+function createOutputSnapshot(run, caseBundle, receiptRef, approvalStatus) {
   const version = approvalStatus === "approved" ? `approved:${receiptRef.sha256}` : "preliminary";
-  const review = cloneJson(run.payload.outcome.review ?? {});
+  const language = run.payload.outcome.review?.language ?? caseBundle.payload.language ?? "sv";
   return sealContent({
     schemaId: SCHEMA.outputSnapshot,
+    schemaVersion: "2.0",
     stableId: `${run.ref.stable_id}:output-snapshot:${run.ref.sha256}`,
     version,
     payload: {
-      contract_version: CONTRACT_VERSION,
+      contract_version: "2.0",
       approval_status: approvalStatus,
-      language: review.language ?? "sv",
+      language,
       run_ref: run.ref,
       approval_receipt_ref: receiptRef,
       proposal_digest: run.payload.proposal_digest,
-      canonical_outputs: cloneJson(run.payload.outcome.canonical_outputs),
-      review,
+      recorded_at: run.payload.recorded_at,
+      context: {
+        company_id: caseBundle.payload.company_id,
+        domain: caseBundle.payload.domain,
+        period: cloneJson(caseBundle.payload.period),
+        docset_ref: cloneJson(caseBundle.payload.docset.ref),
+        previous_state_ref: cloneJson(caseBundle.payload.previous_state.ref),
+      },
+      outcome: cloneJson(run.payload.outcome),
     },
   });
 }
@@ -1095,7 +1105,23 @@ function approvedCoreState(outcome, currentState, domain, periodKind) {
   if (!Array.isArray(core.enabled_modules) || !core.enabled_modules.includes("bookkeeping")) {
     fail("INVALID_PROPOSAL", "Initial core State must enable Bookkeeping");
   }
+  const bookkeepingPolicy = core.policies?.bookkeeping;
+  const vatPolicy = bookkeepingPolicy?.vat_reporting;
+  if (bookkeepingPolicy?.chart_of_accounts !== "BAS"
+      || vatPolicy?.frequency !== "quarterly"
+      || !validAccountList(vatPolicy.input_accounts)
+      || !validAccountList(vatPolicy.output_accounts)
+      || !/^\d{4}$/.test(vatPolicy.settlement_account ?? "")
+      || new Set([...vatPolicy.input_accounts, ...vatPolicy.output_accounts, vatPolicy.settlement_account]).size
+        !== vatPolicy.input_accounts.length + vatPolicy.output_accounts.length + 1) {
+    fail("INVALID_PROPOSAL", "Initial core State requires a complete quarterly BAS VAT policy");
+  }
   return cloneJson(core);
+}
+
+function validAccountList(value) {
+  return Array.isArray(value) && value.length > 0
+    && value.every((account) => typeof account === "string" && /^\d{4}$/.test(account));
 }
 
 async function validateDocset(paths, docset, companyId, periodId) {
@@ -1185,17 +1211,36 @@ function validateReceipt(receipt, companyId) {
   }
 }
 
-function validateOutputSnapshot(snapshot, run, status) {
+function validateOutputSnapshot(snapshot, run, caseBundle, status) {
   verifySchema(snapshot, SCHEMA.outputSnapshot, "output snapshot");
-  const expectedLanguage = run.payload.outcome.review?.language ?? "sv";
+  if (snapshot.ref.schema_version !== "2.0" || snapshot.payload.contract_version !== "2.0") {
+    fail("INTEGRITY_ERROR", "Output snapshot must use schema version 2.0");
+  }
+  const expectedLanguage = run.payload.outcome.review?.language ?? caseBundle.payload.language ?? "sv";
+  const expectedContext = {
+    company_id: caseBundle.payload.company_id,
+    domain: caseBundle.payload.domain,
+    period: caseBundle.payload.period,
+    docset_ref: caseBundle.payload.docset.ref,
+    previous_state_ref: caseBundle.payload.previous_state.ref,
+  };
+  const expectedKeys = [
+    "approval_receipt_ref", "approval_status", "context", "contract_version", "language",
+    "outcome", "proposal_digest", "recorded_at", "run_ref",
+  ];
+  const actualKeys = Object.keys(snapshot.payload).sort();
   if (
+    actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index]) ||
+    !["preliminary", "approved"].includes(status) ||
     snapshot.payload.approval_status !== status ||
+    (status === "preliminary" && snapshot.payload.approval_receipt_ref !== null) ||
+    (status === "approved" && snapshot.payload.approval_receipt_ref?.schema_id !== SCHEMA.receipt) ||
     !sameRef(snapshot.payload.run_ref, run.ref) ||
     snapshot.payload.proposal_digest !== run.payload.proposal_digest ||
-    canonicalStringify(snapshot.payload.canonical_outputs) !==
-      canonicalStringify(run.payload.outcome.canonical_outputs)
-    || (snapshot.payload.language !== undefined && snapshot.payload.language !== expectedLanguage)
-    || (snapshot.payload.review !== undefined && canonicalStringify(snapshot.payload.review) !== canonicalStringify(run.payload.outcome.review))
+    snapshot.payload.recorded_at !== run.payload.recorded_at ||
+    snapshot.payload.language !== expectedLanguage ||
+    canonicalStringify(snapshot.payload.context) !== canonicalStringify(expectedContext) ||
+    canonicalStringify(snapshot.payload.outcome) !== canonicalStringify(run.payload.outcome)
   ) {
     fail("INTEGRITY_ERROR", "Output snapshot does not match its complete run");
   }
@@ -1216,7 +1261,9 @@ async function validateBySchema(paths, catalog, sealed, companyId) {
   }
   if (sealed.ref.schema_id === SCHEMA.outputSnapshot) {
     const run = await readImmutableSealed(paths, sealed.payload.run_ref, "snapshot run");
-    return validateOutputSnapshot(sealed, run, sealed.payload.approval_status);
+    const caseBundle = await readImmutableSealed(paths, run.payload.case_ref, "snapshot case");
+    await validateCase(paths, caseBundle, companyId);
+    return validateOutputSnapshot(sealed, run, caseBundle, sealed.payload.approval_status);
   }
   if (sealed.ref.schema_id === SCHEMA.event) return validateEvent(sealed, companyId);
 }

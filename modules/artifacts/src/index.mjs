@@ -1,33 +1,47 @@
-import { cloneJson, sha256Bytes } from "../../../contracts/src/canonical.mjs";
+import { cloneJson, prettyCanonicalJson, sha256Bytes } from "../../../contracts/src/canonical.mjs";
 import { ContractError, normalizeLanguage, sealContent, verifySealedContent } from "../../../contracts/src/index.mjs";
 import {
   renderPayslips,
-  renderReview,
   renderSie,
   renderVatPdf,
   renderVatXml,
 } from "./private/renderers.mjs";
+import { buildReviewModel } from "./private/review/model.mjs";
+import { renderReviewHtml } from "./private/review/html.mjs";
+import { renderReviewPdf } from "./private/review/pdf.mjs";
 
 const PROFILES = Object.freeze({
-  "review-markdown-v1": (outputs, context) => [renderReview(outputs, context)],
+  "review-source-json-v1": async (_outputs, _context, snapshot) => {
+    buildReviewModel(snapshot);
+    return [{ filename: "review-source.json", mediaType: "application/json; charset=utf-8", bytes: Buffer.from(prettyCanonicalJson(snapshot), "utf8") }];
+  },
+  "review-html-v1": async (_outputs, _context, snapshot) => {
+    const html = renderReviewHtml(buildReviewModel(snapshot));
+    return [{ filename: "review.html", mediaType: "text/html; charset=utf-8", bytes: Buffer.from(html, "utf8") }];
+  },
+  "review-pdf-v1": async (_outputs, _context, snapshot) => [{
+    filename: "review.pdf",
+    mediaType: "application/pdf",
+    bytes: await renderReviewPdf(buildReviewModel(snapshot)),
+  }],
   "sie4-v1": (outputs, context) => [renderSie(outputs, context)],
   "vat-xml-v1": (outputs, context) => [renderVatXml(outputs, context)],
   "vat-verification-pdf-v1": (outputs, context) => [renderVatPdf(outputs, context)],
   "payslips-pdf-v1": renderPayslips,
 });
-const LANGUAGE_PROFILES = new Set(["review-markdown-v1", "payslips-pdf-v1"]);
+const LANGUAGE_PROFILES = new Set(["review-source-json-v1", "review-html-v1", "review-pdf-v1", "payslips-pdf-v1"]);
 
-export function render(snapshot, artifactProfile) {
+export async function render(snapshot, artifactProfile) {
   verifySealedContent(snapshot, "artifact snapshot");
-  if (snapshot.payload?.schema_version !== undefined && snapshot.payload.schema_version !== snapshot.ref.schema_version) {
-    throw new ContractError("Artifact snapshot payload and ContentRef schema versions disagree");
+  if (snapshot.ref.schema_id !== "se.bergbok.output-snapshot" || snapshot.ref.schema_version !== "2.0") {
+    throw new ContractError("Artifacts requires se.bergbok.output-snapshot 2.0");
   }
   const profile = normalizeProfile(artifactProfile);
   const renderer = PROFILES[profile.id];
   if (!renderer) throw new ContractError(`Unknown artifact profile: ${profile.id}`);
   const { outputs, approvalStatus, language, review } = extractSnapshot(snapshot.payload);
   const preview = approvalStatus !== "approved";
-  const rendered = renderer(outputs, { preview, language, review });
+  const rendered = await renderer(outputs, { preview, language, review }, snapshot);
   const artifacts = rendered.map(({ filename, mediaType, bytes }) => ({
     filename,
     media_type: mediaType,
@@ -59,18 +73,21 @@ function normalizeProfile(profile) {
 }
 
 function extractSnapshot(payload) {
-  const approvalStatus = payload.approval_status ?? payload.status ?? "preliminary";
-  const language = normalizeLanguage(payload.language ?? payload.review?.language ?? "sv", "artifact snapshot language");
-  if (payload.language !== undefined && payload.review?.language !== undefined && payload.language !== payload.review.language) {
+  if (payload.contract_version !== "2.0") throw new ContractError("Artifacts requires OutputSnapshot payload version 2.0");
+  const approvalStatus = payload.approval_status;
+  if (!["preliminary", "approved"].includes(approvalStatus)) throw new ContractError("Artifact snapshot approval_status is invalid");
+  const outcome = payload.outcome;
+  if (!outcome || typeof outcome !== "object") throw new ContractError("Artifact snapshot does not contain its complete ModuleOutcome");
+  const language = normalizeLanguage(payload.language, "artifact snapshot language");
+  if (outcome.review?.language !== undefined && language !== outcome.review.language) {
     throw new ContractError("Artifact snapshot language and review language disagree");
   }
-  const outcome = payload.outcome ?? payload.module_outcome ?? payload;
-  const outputs = outcome.canonical_outputs ?? payload.canonical_outputs;
+  const outputs = outcome.canonical_outputs;
   if (!outputs || typeof outputs !== "object") {
     throw new ContractError("Artifact snapshot does not contain canonical_outputs");
   }
   for (const domain of [outputs.bookkeeping, outputs.payroll].filter(Boolean)) assertArtifactDomainMoneyVersion(domain);
-  return { outputs: cloneJson(outputs), approvalStatus, language, review: cloneJson(payload.review ?? {}) };
+  return { outputs: cloneJson(outputs), approvalStatus, language, review: cloneJson(outcome.review ?? {}) };
 }
 
 function assertArtifactDomainMoneyVersion(domain) {

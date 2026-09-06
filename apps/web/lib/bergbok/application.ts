@@ -5,13 +5,13 @@ import { CompanyRecord, Artifacts } from "@bergbok/modular-system";
 import type { AuthenticatedSession } from "./auth-types.ts";
 import { appConfig } from "./config.ts";
 import { getDatabase, type BergbokDatabase } from "./database.ts";
-import { buildStartProfile } from "./start-profile.ts";
 import {
   validateBookkeepingJob,
   validateCompanySummary,
   validateConversationEvent,
   validatePeriodDetail,
   validateUploadRecord,
+  type WorkContext,
   type DocumentDetail,
   type DocumentOrigin,
   type PeriodDetail,
@@ -118,6 +118,7 @@ export function appendChatMessage(
   text: string,
   actorId: string | null,
   database = getDatabase(),
+  workContext: WorkContext | null = null,
 ) {
   if (!text.trim()) return null;
   const previous = database
@@ -126,7 +127,12 @@ export function appendChatMessage(
     )
     .get(CONVERSATION_ID, `chat_${role}`) as { payload_json: string } | undefined;
   if (previous && JSON.parse(previous.payload_json).messageId === messageId) return null;
-  return appendEvent(`chat_${role}`, actorId, { messageId, text: text.trim() }, database);
+  return appendEvent(
+    `chat_${role}`,
+    actorId,
+    { messageId, text: text.trim(), ...(workContext ? { workContext } : {}) },
+    database,
+  );
 }
 
 export async function companySummary(database = getDatabase()) {
@@ -161,12 +167,16 @@ export async function companySummary(database = getDatabase()) {
         "SELECT id,status FROM bookkeeping_jobs WHERE company_id=? AND period_id=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1",
       )
       .get(COMPANY_ID, row.id) as { id: string; status: string } | undefined;
-    const preliminary = database
+    const review = database
       .prepare(
-        "SELECT id,run_sha256,review_markdown,outcome_json FROM bookkeeping_runs WHERE company_id=? AND period_id=? AND decision IS NULL AND superseded_at IS NULL AND outcome_kind='proposal' ORDER BY created_at DESC LIMIT 1",
+        "SELECT id,run_sha256,outcome_kind FROM bookkeeping_runs WHERE company_id=? AND period_id=? AND decision IS NULL AND superseded_at IS NULL ORDER BY created_at DESC LIMIT 1",
       )
       .get(COMPANY_ID, row.id) as
-      | { id: string; run_sha256: string; review_markdown: string | null; outcome_json: string }
+      | {
+          id: string;
+          run_sha256: string;
+          outcome_kind: "proposal" | "needs_input" | "out_of_scope";
+        }
       | undefined;
     const uploadCount = (
       database
@@ -181,7 +191,7 @@ export async function companySummary(database = getDatabase()) {
         ? "locked"
         : running
           ? "running"
-          : preliminary
+          : review?.outcome_kind === "proposal"
             ? "preliminary"
             : "working";
     periods.push({
@@ -193,12 +203,12 @@ export async function companySummary(database = getDatabase()) {
       status,
       uploadCount,
       jobId: running?.id ?? null,
-      proposal: preliminary
+      review: review
         ? {
-            id: preliminary.id,
-            sha256: preliminary.run_sha256,
-            reviewMarkdown: preliminary.review_markdown,
-            outcome: JSON.parse(preliminary.outcome_json),
+            id: review.id,
+            sha256: review.run_sha256,
+            kind: review.outcome_kind,
+            approvable: review.outcome_kind === "proposal",
           }
         : null,
     });
@@ -346,7 +356,7 @@ export async function periodDetail(
     .all(COMPANY_ID, periodId) as PeriodDetail["artifacts"];
   const latestJobRow = database
     .prepare(
-      "SELECT j.id,j.status,j.phase,j.created_at,j.started_at,j.heartbeat_at,j.phase_changed_at,j.finished_at,j.error_message,r.outcome_json FROM bookkeeping_jobs j LEFT JOIN bookkeeping_runs r ON r.id=j.run_id WHERE j.company_id=? AND j.period_id=? ORDER BY j.created_at DESC LIMIT 1",
+      "SELECT j.id,j.status,j.phase,j.created_at,j.started_at,j.heartbeat_at,j.phase_changed_at,j.finished_at,j.error_message FROM bookkeeping_jobs j WHERE j.company_id=? AND j.period_id=? ORDER BY j.created_at DESC LIMIT 1",
     )
     .get(COMPANY_ID, periodId) as
     | {
@@ -359,28 +369,8 @@ export async function periodDetail(
         phase_changed_at: number | null;
         finished_at: number | null;
         error_message: string | null;
-        outcome_json: string | null;
       }
     | undefined;
-  const startProfile =
-    period.kind === "start" && period.proposal
-      ? buildStartProfile(
-          period.proposal.outcome,
-          await Promise.all(
-            documents
-              .filter(
-                (document) =>
-                  document.mediaType === "text/plain" || document.mediaType === "text/markdown",
-              )
-              .map(async (document) => ({
-                id: document.id,
-                filename: document.filename,
-                contentUrl: document.contentUrl,
-                text: (await uploadedContent(document.sourceId, database)).bytes.toString("utf8"),
-              })),
-          ),
-        )
-      : null;
   const detail = {
     period,
     editable:
@@ -400,10 +390,8 @@ export async function periodDetail(
           phaseChangedAt: latestJobRow.phase_changed_at,
           finishedAt: latestJobRow.finished_at,
           errorMessage: latestJobRow.error_message,
-          outcome: latestJobRow.outcome_json ? JSON.parse(latestJobRow.outcome_json) : null,
         }
       : null,
-    startProfile,
   };
   validatePeriodDetail(detail);
   return detail;
@@ -444,7 +432,7 @@ async function assertEditablePeriod(
   return period;
 }
 
-function supersedeProposal(
+function supersedeReview(
   periodId: string,
   actorId: string,
   reason: string,
@@ -456,7 +444,7 @@ function supersedeProposal(
       "UPDATE bookkeeping_runs SET superseded_at=? WHERE company_id=? AND period_id=? AND decision IS NULL AND superseded_at IS NULL",
     )
     .run(now, COMPANY_ID, periodId);
-  if (result.changes) appendEvent("proposal_superseded", actorId, { reason, periodId }, database);
+  if (result.changes) appendEvent("review_superseded", actorId, { reason, periodId }, database);
 }
 
 const markdownFilename = (value: string) => {
@@ -605,7 +593,7 @@ export async function replaceTextDocument(
     database.exec("ROLLBACK");
     throw error;
   }
-  supersedeProposal(periodId, session.userId, "document_replaced", database);
+  supersedeReview(periodId, session.userId, "document_replaced", database);
   appendEvent(
     "text_document_replaced",
     session.userId,
@@ -636,7 +624,7 @@ export async function removePeriodDocument(
       "UPDATE docset_entries SET status='removed',ended_at=? WHERE company_id=? AND period_id=? AND document_id=? AND status='active'",
     )
     .run(now, COMPANY_ID, periodId, documentId);
-  supersedeProposal(periodId, session.userId, "document_removed", database);
+  supersedeReview(periodId, session.userId, "document_removed", database);
   appendEvent("document_removed", session.userId, { periodId, documentId }, database);
   return { periodId, documentId, status: "removed" as const };
 }
@@ -782,7 +770,7 @@ export async function assignUpload(
       typeof upload.replaces_document_id === "string" ? upload.replaces_document_id : null,
       now,
     );
-  supersedeProposal(period.id, session.userId, "docset_changed", database);
+  supersedeReview(period.id, session.userId, "docset_changed", database);
   appendEvent(
     "document_assigned",
     session.userId,
@@ -931,8 +919,8 @@ export async function requestProposalChanges(
 }
 
 async function persistArtifacts(runId: string, snapshot: unknown, database: BergbokDatabase) {
-  for (const profile of ["review-markdown-v1", "sie4-v1"]) {
-    const bundle = Artifacts.render(snapshot, profile);
+  for (const profile of ["review-source-json-v1", "review-html-v1", "review-pdf-v1", "sie4-v1"]) {
+    const bundle = await Artifacts.render(snapshot, profile);
     for (const file of bundle.payload.artifacts) {
       const directory = path.join(appConfig().artifactRoot, runId, profile);
       await mkdir(directory, { recursive: true });
@@ -957,6 +945,36 @@ async function persistArtifacts(runId: string, snapshot: unknown, database: Berg
         );
     }
   }
+}
+
+export async function reviewContent(
+  runId: string,
+  format: "html" | "pdf" | "json",
+  database = getDatabase(),
+) {
+  const row = database
+    .prepare("SELECT run_ref_json FROM bookkeeping_runs WHERE id=? AND company_id=?")
+    .get(runId, COMPANY_ID) as { run_ref_json: string } | undefined;
+  if (!row) throw httpError(404, "Körningen finns inte.");
+  const snapshot = await (
+    await companyRecord()
+  ).read({
+    kind: "output_snapshot",
+    runRef: JSON.parse(row.run_ref_json),
+  });
+  const profile = {
+    html: "review-html-v1",
+    pdf: "review-pdf-v1",
+    json: "review-source-json-v1",
+  }[format];
+  if (!profile) throw httpError(400, "Ogiltigt rapportformat.");
+  const bundle = await Artifacts.render(snapshot, profile);
+  const file = bundle.payload.artifacts[0];
+  return {
+    filename: file.filename,
+    mediaType: file.media_type,
+    bytes: Buffer.from(file.content_base64, "base64"),
+  };
 }
 
 export async function artifactContent(id: string, database = getDatabase()) {

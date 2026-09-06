@@ -46,7 +46,7 @@ test("live Fiktiv AB files reach approved State in period order", { skip: !enabl
       const job = claimJob(database);
       assert.ok(job);
       const processed = await processJob(job, database);
-      assert.equal(processed.outcome.kind, "proposal", processed.outcome.review?.report_markdown);
+      assert.equal(processed.outcome.kind, "proposal", processed.outcome.review?.summary);
       await decideRun(session, processed.runId, processed.stored.ref.sha256, "approved", database);
     }
     const summary = await companySummary(database);

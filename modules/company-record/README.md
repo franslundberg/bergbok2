@@ -25,6 +25,19 @@ recorded in the timeline and apply only to future prepared cases. Use
 freezes the language it inherited, so later company-level changes cannot alter
 existing cases, runs, approvals, or output snapshots.
 
+Every recorded run can be read as a preliminary `OutputSnapshot` v2. Approval
+publishes an approved snapshot of the same complete outcome. The snapshot binds
+approval status, frozen language, run reference, proposal digest, company,
+domain, complete Period, Docset and preceding-State references, the complete
+`ModuleOutcome`, and the run's recorded timestamp. It is the only persisted
+source for approval review rendering; Company Record does not persist a second
+report model.
+
+The first approved Bookkeeping Start or Import may initialize core State. That
+initialization must include a complete quarterly BAS VAT policy, and later
+periods cannot rewrite it. Company Record therefore owns the trusted reporting
+cadence that Bookkeeping receives when preparing subsequent cases.
+
 Run its automatic tests with `npm run test:company-record` and its human-scale
 demo with `npm run demo:company-record` from the repository root. The default
 demo output is a concise walkthrough and the complete machine-readable result

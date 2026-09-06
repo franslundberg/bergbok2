@@ -13,7 +13,7 @@ import { loadEnvironment } from "./env.mjs";
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 
-export async function consolidateWithAi({ caseBundle, variant, evaluate }) {
+export async function consolidateWithAi({ caseBundle, variant, evaluate, onCandidate }) {
   const price = resolveVariant(variant);
   const environment = await loadEnvironment(path.join(REPOSITORY_ROOT, ".env.local"));
   const apiKey = environment.OPENAI_API_KEY?.trim();
@@ -40,6 +40,10 @@ export async function consolidateWithAi({ caseBundle, variant, evaluate }) {
       evaluate,
       terminalLog: variant.quiet ? () => undefined : console.log,
     });
+    if (onCandidate !== undefined) {
+      if (typeof onCandidate !== "function") throw new TypeError("onCandidate diagnostic sink must be a function");
+      await onCandidate(cloneJson(agent.candidate));
+    }
     const provenance = {
       provider: "openai",
       side_effects: "model_inference_only",
@@ -151,17 +155,28 @@ Write one JSON object with no Markdown fences:
 \`\`\`json
 {
   "schema_id": "se.bergbok.bookkeeping-ai-candidate",
-  "schema_version": "2.0",
+  "schema_version": "4.0",
   "status": "proposal | needs_input | out_of_scope",
   "core": {
     "organization": { "name": "Legal name", "organization_number": "NNNNNN-NNNN" },
     "registrations": {},
     "address": {},
+    "policies": {
+      "bookkeeping": {
+        "chart_of_accounts": "BAS",
+        "vat_reporting": {
+          "frequency": "quarterly",
+          "input_accounts": ["2641"],
+          "output_accounts": ["2611"],
+          "settlement_account": "2650"
+        }
+      }
+    },
     "evidence_document_ids": ["exact document_id supporting the core facts"]
   },
   "bookkeeping_input": {
     "schema_id": "se.bergbok.bookkeeping-input",
-    "schema_version": "2.0",
+    "schema_version": "3.0",
     "company_id": "exact case company_id",
     "period_id": "exact case period.id",
     "mode": "start | import | ordinary",
@@ -183,7 +198,14 @@ Write one JSON object with no Markdown fences:
     }],
     "open_item_changes": [],
     "reconciliations": [{ "account": "1930", "external_closing_balance": "0.00 SEK", "evidence_document_ids": ["exact document_id"] }],
-    "vat": { "status": "not_due | due", "reporting_period_start": null, "reporting_period_end": null, "declaration_boxes": null }
+    "vat": { "status": "not_due | due", "closing_transaction_source_id": null, "declaration_boxes": null }
+  },
+  "review": {
+    "summary": "Plain-text consolidation summary in the selected language",
+    "transaction_summaries": [{
+      "source_id": "exact source_id of a resulting canonical transaction",
+      "summary": "One concise plain-text line, at most 240 characters"
+    }]
   },
   "questions": [{ "question_id": "BKQ1", "code": "MISSING_FACT", "prompt": "Question in the selected language", "evidence_document_ids": [] }],
   "warnings": [{ "code": "WARNING", "message": "Warning in the selected language", "evidence_document_ids": [] }],
@@ -196,6 +218,12 @@ For each authoritative PayrollAccountingFacts in upstream-results.json, payroll_
 Every monetary amount is canonical Money: a major-unit decimal, one ASCII space, and the uppercase currency code. SEK always has exactly two decimals, including zero and whole-krona values, for example "0.00 SEK" and "48406.00 SEK". Never emit integer ore, JSON decimal numbers, grouping separators, or decimal commas.
 
 For Start, all imported fields, transactions, payroll_postings, open_item_changes, and reconciliations must be empty or omitted. For Import, imported_balances, imported_open_items, and imported_verification_series are required and transactions, payroll_postings, and open_item_changes must be empty. Ordinary periods must not contain imported fields.
+
+For the first Start or Import, core.policies.bookkeeping is required. Extract the quarterly frequency from cited company evidence and use the controller-configured BAS VAT accounts exactly. Later periods use the trusted policy supplied in case.json.
+
+VAT cycle dates are deterministic and must not be included in candidate.json. Outside quarter end, vat.status is not_due and both closing_transaction_source_id and declaration_boxes are null. In the Period containing quarter end, vat.status is due, declaration_boxes are required, and closing_transaction_source_id names the final transaction that closes configured input and output VAT accounts to 2650 on the quarter-end date.
+
+Review is always required. Its summary is plain text. For a proposal, transaction_summaries must contain exactly one entry for every resulting canonical transaction, keyed by the transaction's exact source_id, including payroll-derived and VAT-closing transactions. Each transaction summary is one line and at most 240 characters. For needs_input and out_of_scope, transaction_summaries must be empty.
 
 For proposal, questions must be empty and bookkeeping_input is required. For needs_input, questions must be non-empty; bookkeeping_input may contain a safe partial draft. For out_of_scope, reasons must be non-empty. Core is required only when initializing the first Start or Import State. Omit fields that do not apply, except questions, warnings, and reasons are always arrays.
 `;

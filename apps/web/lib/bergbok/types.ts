@@ -1,18 +1,33 @@
 export type PeriodStatus = "locked" | "working" | "running" | "preliminary" | "approved";
 export type DocumentOrigin = "upload" | "text" | "note";
 
-export type WorkbenchTarget =
-  | { kind: "period"; periodId: string }
-  | { kind: "document"; periodId: string; documentId: string }
-  | { kind: "editor"; periodId: string; documentId?: string }
-  | { kind: "proposal"; periodId: string }
-  | { kind: "artifacts"; periodId: string };
+export type WorkContext =
+  | {
+      companyId: string;
+      area: "bookkeeping";
+      periodId: string;
+      activity: "documents";
+      object?: { kind: "document"; id: string };
+    }
+  | {
+      companyId: string;
+      area: "bookkeeping";
+      periodId: string;
+      activity: "review";
+      object: { kind: "run"; id: string };
+    }
+  | {
+      companyId: string;
+      area: "bookkeeping";
+      periodId: string;
+      activity: "artifacts";
+    };
 
 export type RunSummary = {
   id: string;
   sha256: string;
-  reviewMarkdown: string | null;
-  outcome: Record<string, unknown>;
+  kind: "proposal" | "needs_input" | "out_of_scope";
+  approvable: boolean;
 };
 
 export type BookkeepingJobPhase = "queued" | "preparing" | "analyzing" | "recording";
@@ -26,7 +41,7 @@ export type PeriodSummary = {
   status: PeriodStatus;
   uploadCount: number;
   jobId: string | null;
-  proposal: RunSummary | null;
+  review: RunSummary | null;
 };
 
 export type UploadRecord = {
@@ -68,21 +83,6 @@ export type PeriodDocumentSummary = {
   contentUrl: string;
 };
 
-export type StartProfileFact = {
-  label: string;
-  value: string;
-  source: "proposal" | "policy" | "evidence";
-  documentId?: string;
-  filename?: string;
-  contentUrl?: string;
-};
-
-export type StartProfile = {
-  identity: StartProfileFact[];
-  accounting: StartProfileFact[];
-  evidence: StartProfileFact[];
-};
-
 export type DocumentDetail = PeriodDocumentSummary & {
   periodId: string;
   text: string | null;
@@ -105,9 +105,7 @@ export type PeriodDetail = {
     phaseChangedAt: number | null;
     finishedAt: number | null;
     errorMessage: string | null;
-    outcome: Record<string, unknown> | null;
   };
-  startProfile: StartProfile | null;
 };
 
 export type ConversationEvent = {
@@ -169,19 +167,33 @@ export function validateUploadRecord(value: unknown): asserts value is UploadRec
     throw new TypeError("UploadRecord.status är ogiltig.");
 }
 
-export function validateWorkbenchTarget(value: unknown): asserts value is WorkbenchTarget {
-  const target = object(value, "WorkbenchTarget");
-  if (!["period", "document", "editor", "proposal", "artifacts"].includes(String(target.kind)))
-    throw new TypeError("WorkbenchTarget.kind är ogiltig.");
-  text(target.periodId, "WorkbenchTarget.periodId");
-  if (target.kind === "document") text(target.documentId, "WorkbenchTarget.documentId");
-  if (target.documentId !== undefined && typeof target.documentId !== "string")
-    throw new TypeError("WorkbenchTarget.documentId är ogiltigt.");
+export function validateWorkContext(value: unknown): asserts value is WorkContext {
+  const context = object(value, "WorkContext");
+  text(context.companyId, "WorkContext.companyId");
+  if (context.area !== "bookkeeping") throw new TypeError("WorkContext.area är ogiltigt.");
+  text(context.periodId, "WorkContext.periodId");
+  if (!["documents", "review", "artifacts"].includes(String(context.activity)))
+    throw new TypeError("WorkContext.activity är ogiltig.");
+  if (context.activity === "documents") {
+    if (context.object !== undefined) {
+      const selected = object(context.object, "WorkContext.object");
+      if (selected.kind !== "document") throw new TypeError("WorkContext.object är ogiltigt.");
+      text(selected.id, "WorkContext.object.id");
+    }
+    return;
+  }
+  if (context.activity === "review") {
+    const selected = object(context.object, "WorkContext.object");
+    if (selected.kind !== "run") throw new TypeError("WorkContext.object är ogiltigt.");
+    text(selected.id, "WorkContext.object.id");
+    return;
+  }
+  if (context.object !== undefined) throw new TypeError("WorkContext.object är ogiltigt.");
 }
 
-export function parseWorkbenchTarget(value: unknown): WorkbenchTarget | null {
+export function parseWorkContext(value: unknown): WorkContext | null {
   if (value === undefined || value === null) return null;
-  validateWorkbenchTarget(value);
+  validateWorkContext(value);
   return value;
 }
 
@@ -231,20 +243,6 @@ export function validatePeriodDetail(value: unknown): asserts value is PeriodDet
         throw new TypeError(`PeriodDetail.latestJob.${key} är ogiltigt.`);
     }
   }
-  if (detail.startProfile !== null) {
-    const profile = object(detail.startProfile, "PeriodDetail.startProfile");
-    for (const key of ["identity", "accounting", "evidence"] as const) {
-      if (!Array.isArray(profile[key]))
-        throw new TypeError(`PeriodDetail.startProfile.${key} är ogiltig.`);
-      for (const value of profile[key]) {
-        const fact = object(value, "StartProfileFact");
-        text(fact.label, "StartProfileFact.label");
-        text(fact.value, "StartProfileFact.value");
-        if (!["proposal", "policy", "evidence"].includes(String(fact.source)))
-          throw new TypeError("StartProfileFact.source är ogiltig.");
-      }
-    }
-  }
 }
 
 export function validatePeriodSummary(value: unknown): asserts value is PeriodSummary {
@@ -255,6 +253,7 @@ export function validatePeriodSummary(value: unknown): asserts value is PeriodSu
     throw new TypeError("PeriodSummary.status är ogiltig.");
   if (!Number.isSafeInteger(period.sequence) || !Number.isSafeInteger(period.uploadCount))
     throw new TypeError("PeriodSummary innehåller ogiltiga heltal.");
+  if (period.review !== null) validateRunSummary(period.review);
 }
 
 export function validateBookkeepingJob(value: unknown): asserts value is BookkeepingJob {
@@ -276,7 +275,9 @@ export function validateRunSummary(value: unknown): asserts value is RunSummary 
   const run = object(value, "RunSummary");
   text(run.id, "RunSummary.id");
   text(run.sha256, "RunSummary.sha256");
-  object(run.outcome, "RunSummary.outcome");
+  if (!["proposal", "needs_input", "out_of_scope"].includes(String(run.kind)))
+    throw new TypeError("RunSummary.kind är ogiltig.");
+  if (typeof run.approvable !== "boolean") throw new TypeError("RunSummary.approvable är ogiltig.");
 }
 
 export function validateCompanySummary(value: unknown): asserts value is CompanySummary {

@@ -93,7 +93,8 @@ intervals are supported for the narrow Swedish Pilot profile. The operation
 returns one of:
 
 - `proposal`, with a sealed projected Bookkeeping State, canonical bookkeeping
-  output, provenance, warnings, evidence, and a Markdown review;
+  output, period delta, provenance, warnings, evidence, and structured review
+  narrative;
 - `needs_input`, with explicit questions and no projected State; or
 - `out_of_scope`, with explicit reasons and no projected State.
 
@@ -102,9 +103,18 @@ cases), writes it to `review.language`, and localizes module-generated review
 text. Source-provided names, descriptions, and quoted evidence remain
 unchanged.
 
-Bookkeeping module version 2.0.0 writes schema-v2 monetary fields as Decision
-0001 Money strings. It reads schema-v1 integer-ore inputs and preceding State
-through one boundary adapter without rewriting sealed historical content.
+Bookkeeping module version 4.0.0 writes schema-v3 input, output, State, and
+period-delta payloads with canonical Decision 0001 Money strings. It reads
+schema-v1 integer-ore inputs and preceding State through one boundary adapter;
+schema-v2 Bookkeeping data is deliberately unsupported.
+
+VAT reporting cadence is trusted company policy. Start must propose an
+evidence-backed BAS policy with quarterly cadence and configured input,
+output, and settlement accounts. Approval freezes that policy in core State.
+Later runs derive calendar-quarter boundaries from it: an ordinary period
+containing quarter end must include declaration boxes and a final quarter-end
+transaction that clears the configured VAT accounts to the settlement
+account. Other periods reject VAT declarations and closing transactions.
 
 The public interface does not expose the accounting validator or calculation
 kernel. Bookkeeping accepts Payroll only as immutable `PayrollAccountingFacts`
@@ -188,20 +198,24 @@ generated review text and payslip labels use that frozen language.
 ## 4. Artifacts
 
 ```text
-Artifacts.render(outputSnapshot, artifactProfile) -> ArtifactBundle
+await Artifacts.render(outputSnapshot, artifactProfile) -> ArtifactBundle
 ```
 
-Registered profiles are `review-markdown-v1`, `sie4-v1`, `vat-xml-v1`,
-`vat-verification-pdf-v1`, and `payslips-pdf-v1`. Rendering is deterministic:
-the bundle embeds every file's bytes, media type, byte length, and SHA-256.
-Artifacts derived from a preliminary snapshot are visibly marked as previews.
+Registered profiles are `review-source-json-v1`, `review-html-v1`,
+`review-pdf-v1`, `sie4-v1`, `vat-xml-v1`, `vat-verification-pdf-v1`, and
+`payslips-pdf-v1`. Rendering is asynchronous and deterministic: the bundle
+embeds every file's bytes, media type, byte length, and SHA-256. Artifacts
+derived from a preliminary snapshot are visibly marked as previews.
 
 Artifacts performs no submission, filing, payment, email, or delivery.
 
-Review Markdown and payslip PDFs use the language frozen in the output
-snapshot; callers cannot override it at render time. SIE, VAT XML, and VAT
-verification PDF content remain unchanged. Artifact bundles expose the
-resolved language for the human-facing profiles.
+The review source is the exact canonical OutputSnapshot v2. A private,
+ephemeral ReviewModel is the single interpretation of its report content and
+drives both standalone semantic HTML and a fully expanded A4 PDF. Review
+artifacts and payslip PDFs use the language frozen in the output snapshot;
+callers cannot override it at render time. SIE, VAT XML, and VAT verification
+PDF content remain unchanged. Artifact bundles expose the resolved language
+for the human-facing profiles.
 
 ## 5. Evaluation Lab (development only)
 

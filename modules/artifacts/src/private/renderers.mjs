@@ -1,24 +1,5 @@
-import { prettyCanonicalJson } from "../../../../contracts/src/canonical.mjs";
 import { formatMoney as formatCanonicalMoney, parseMoney } from "../../../../contracts/src/index.mjs";
 import { renderTextPdf } from "./pdf.mjs";
-
-export function renderReview(outputs, { preview, language = "sv" }) {
-  const labels = language === "sv"
-    ? { title: "# Bergbok granskningspaket", section: "## Kanoniska utdata", warning: "> FÖRHANDSVISNING – materialet är inte godkänt." }
-    : { title: "# Bergbok review package", section: "## Canonical outputs", warning: "> PREVIEW - this material is not approved." };
-  const markdown = [
-    labels.title,
-    "",
-    preview ? labels.warning : "",
-    labels.section,
-    "",
-    "```json",
-    prettyCanonicalJson(outputs).trimEnd(),
-    "```",
-    "",
-  ].filter((line, index, all) => line !== "" || all[index - 1] !== "").join("\n");
-  return { filename: "review.md", mediaType: "text/markdown; charset=utf-8", bytes: Buffer.from(`${markdown}\n`, "utf8") };
-}
 
 export function renderSie(outputs, { preview }) {
   const bookkeeping = outputs.bookkeeping ?? outputs;
@@ -70,8 +51,9 @@ export function renderVatXml(outputs, { preview }) {
   if (!/^\d{6}-\d{4}$/.test(organization.organization_number ?? "")) {
     throw new Error("VAT XML profile requires organization_number as xxxxxx-xxxx");
   }
-  const end = vat.reporting_period_end;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(end ?? "")) throw new Error("VAT XML profile requires reporting_period_end");
+  if (vat.status !== "due" || vat.due_in_period !== true) throw new Error("VAT XML profile requires VAT due in the rendered period");
+  const end = vat.cycle_end;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(end ?? "")) throw new Error("VAT XML profile requires cycle_end");
   for (const box of ["10", "11", "12", "48", "49"]) wholeSek(boxes[box] ?? 0, `VAT box ${box}`);
   const wholeBoxes = Object.fromEntries(Object.entries(boxes).map(([box, value]) => [box, wholeSek(value, `VAT box ${box}`)]));
   const body = [
@@ -103,7 +85,9 @@ export function renderVatPdf(outputs, { preview }) {
   const organization = bookkeeping.organization ?? outputs.organization ?? {};
   const lines = [
     `${organization.name ?? "Unknown company"} (${organization.organization_number ?? "unknown organization number"})`,
-    `Reporting period: ${vat.reporting_period_start ?? "?"} - ${vat.reporting_period_end ?? "?"}`,
+    `Reporting frequency: ${vat.frequency ?? "?"}`,
+    `Reporting period: ${vat.cycle_start ?? "?"} - ${vat.cycle_end ?? "?"}`,
+    `VAT closing transaction: ${vat.closing_transaction_source_id ?? "?"}`,
     "",
     ...["10", "11", "12", "48", "49"].map((box) => `VAT box ${box}: ${wholeSek(boxes[box] ?? 0, `VAT box ${box}`)} SEK`),
     "",

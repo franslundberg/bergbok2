@@ -1,15 +1,15 @@
-import { validateWorkbenchTarget, type WorkbenchTarget } from "./types.ts";
+import { validateWorkContext, type WorkContext } from "./types.ts";
 
-export function claimWorkbenchNavigation(
+export function claimWorkContextNavigation(
   handledToolCalls: Set<string>,
   toolCallId: string,
   result: unknown,
-): WorkbenchTarget | null {
+): WorkContext | null {
   if (handledToolCalls.has(toolCallId)) return null;
   if (!result || typeof result !== "object" || Array.isArray(result)) return null;
-  const target = (result as { workbench?: unknown }).workbench;
+  const target = (result as { workContext?: unknown }).workContext;
   try {
-    validateWorkbenchTarget(target);
+    validateWorkContext(target);
   } catch {
     return null;
   }

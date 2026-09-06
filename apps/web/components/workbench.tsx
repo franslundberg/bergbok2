@@ -17,9 +17,9 @@ import type {
   DocumentDetail,
   PeriodDetail,
   PeriodDocumentSummary,
-  StartProfileFact,
-  WorkbenchTarget,
+  WorkContext,
 } from "@/lib/bergbok/types";
+import { artifactsContext, documentContext, documentsContext } from "@/lib/bergbok/work-context";
 import { formatElapsed } from "@/lib/bergbok/job-progress";
 
 const request = async (url: string, init?: RequestInit) => {
@@ -38,26 +38,22 @@ const statusLabel: Record<string, string> = {
   approved: "Godkänd",
 };
 
-const record = (value: unknown): Record<string, unknown> =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-const list = (value: unknown) => (Array.isArray(value) ? value : []);
-
 export function Workbench({
   summary,
-  target,
-  onTarget,
+  context,
+  onContext,
   onUpload,
   onChanged,
   onClose,
+  compactContextLabel,
 }: {
   summary: CompanySummary;
-  target: WorkbenchTarget;
-  onTarget: (target: WorkbenchTarget) => void;
+  context: WorkContext;
+  onContext: (context: WorkContext) => void;
   onUpload: (files: FileList, periodId: string) => Promise<void>;
   onChanged: () => Promise<void>;
   onClose: () => void;
+  compactContextLabel?: string;
 }) {
   const [detail, setDetail] = useState<PeriodDetail>();
   const [document, setDocument] = useState<DocumentDetail>();
@@ -65,20 +61,29 @@ export function Workbench({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [dragging, setDragging] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const previousPeriodId = useRef(context.periodId);
   const fileInput = useRef<HTMLInputElement>(null);
+  const view = editorOpen
+    ? "editor"
+    : context.activity === "documents"
+      ? context.object
+        ? "document"
+        : "period"
+      : context.activity;
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
       const next = (await request(
-        `/api/periods/${encodeURIComponent(target.periodId)}`,
+        `/api/periods/${encodeURIComponent(context.periodId)}`,
       )) as PeriodDetail;
       setDetail(next);
-      if (target.kind === "document") {
+      if (view === "document" && context.activity === "documents" && context.object) {
         setDocument(
           (await request(
-            `/api/periods/${encodeURIComponent(target.periodId)}/documents/${encodeURIComponent(target.documentId)}`,
+            `/api/periods/${encodeURIComponent(context.periodId)}/documents/${encodeURIComponent(context.object.id)}`,
           )) as DocumentDetail,
         );
       } else {
@@ -89,11 +94,17 @@ export function Workbench({
     } finally {
       setLoading(false);
     }
-  }, [target]);
+  }, [context, view]);
 
   useEffect(() => {
     void refresh();
   }, [refresh, summary]);
+
+  useEffect(() => {
+    if (previousPeriodId.current !== context.periodId) setEditorOpen(false);
+    previousPeriodId.current = context.periodId;
+    if (context.activity !== "documents" || context.object) setEditorOpen(false);
+  }, [context]);
 
   const perform = async (operation: () => Promise<unknown>) => {
     setBusy(true);
@@ -111,7 +122,7 @@ export function Workbench({
 
   const upload = async (files: FileList | null) => {
     if (!files?.length || !detail?.editable) return;
-    await perform(() => onUpload(files, target.periodId));
+    await perform(() => onUpload(files, context.periodId));
     if (fileInput.current) fileInput.current.value = "";
   };
 
@@ -138,21 +149,24 @@ export function Workbench({
       }}
     >
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-        {target.kind !== "period" && (
+        {view !== "period" && (
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
             aria-label="Tillbaka till underlagen"
-            onClick={() => onTarget({ kind: "period", periodId: target.periodId })}
+            onClick={() => {
+              setEditorOpen(false);
+              onContext(documentsContext(context.companyId, context.periodId));
+            }}
           >
             <ArrowLeftIcon />
           </Button>
         )}
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{titleFor(target, document)}</p>
-          {target.kind !== "period" && (
-            <p className="text-xs text-muted-foreground">{target.periodId}</p>
+          <p className="truncate font-medium">{titleFor(view, document)}</p>
+          {compactContextLabel && (
+            <p className="truncate text-xs text-muted-foreground">Gäller: {compactContextLabel}</p>
           )}
         </div>
         <Button
@@ -168,15 +182,17 @@ export function Workbench({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {loading && !detail && <p className="text-sm text-muted-foreground">Läser underlag…</p>}
-        {detail && target.kind === "period" && (
+        {detail && view === "period" && (
           <PeriodView
             detail={detail}
             busy={busy}
-            onTarget={onTarget}
+            companyId={context.companyId}
+            onContext={onContext}
+            onOpenEditor={() => setEditorOpen(true)}
             onChooseFiles={() => fileInput.current?.click()}
             onRun={() =>
               perform(() =>
-                request(`/api/periods/${encodeURIComponent(target.periodId)}/runs`, {
+                request(`/api/periods/${encodeURIComponent(context.periodId)}/runs`, {
                   method: "POST",
                 }),
               )
@@ -186,77 +202,77 @@ export function Workbench({
                 request(`/api/uploads/${encodeURIComponent(uploadId)}/action`, {
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ action, periodId: target.periodId }),
+                  body: JSON.stringify({ action, periodId: context.periodId }),
                 }),
               )
             }
           />
         )}
-        {detail && target.kind === "document" && document && (
-          <DocumentView
-            detail={detail}
-            document={document}
-            busy={busy}
-            onTarget={onTarget}
-            onSave={(markdown) =>
-              perform(async () => {
-                const updated = (await request(
-                  `/api/periods/${encodeURIComponent(target.periodId)}/documents/${encodeURIComponent(target.documentId)}`,
-                  {
-                    method: "PATCH",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({ markdown }),
-                  },
-                )) as { documentId: string };
-                onTarget({
-                  kind: "document",
-                  periodId: target.periodId,
-                  documentId: updated.documentId,
-                });
-              })
-            }
-            onRemove={() =>
-              perform(async () => {
-                await request(
-                  `/api/periods/${encodeURIComponent(target.periodId)}/documents/${encodeURIComponent(target.documentId)}`,
-                  { method: "DELETE" },
-                );
-                onTarget({ kind: "period", periodId: target.periodId });
-              })
-            }
-          />
-        )}
-        {detail && target.kind === "editor" && (
+        {detail &&
+          view === "document" &&
+          document &&
+          context.activity === "documents" &&
+          context.object && (
+            <DocumentView
+              detail={detail}
+              document={document}
+              busy={busy}
+              companyId={context.companyId}
+              onContext={onContext}
+              onSave={(markdown) =>
+                perform(async () => {
+                  const updated = (await request(
+                    `/api/periods/${encodeURIComponent(context.periodId)}/documents/${encodeURIComponent(context.object!.id)}`,
+                    {
+                      method: "PATCH",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ markdown }),
+                    },
+                  )) as { documentId: string };
+                  onContext(
+                    documentContext(context.companyId, context.periodId, updated.documentId),
+                  );
+                })
+              }
+              onRemove={() =>
+                perform(async () => {
+                  await request(
+                    `/api/periods/${encodeURIComponent(context.periodId)}/documents/${encodeURIComponent(context.object!.id)}`,
+                    { method: "DELETE" },
+                  );
+                  onContext(documentsContext(context.companyId, context.periodId));
+                })
+              }
+            />
+          )}
+        {detail && view === "editor" && (
           <TextEditor
             busy={busy}
             onSave={(filename, markdown) =>
               perform(async () => {
                 const created = (await request(
-                  `/api/periods/${encodeURIComponent(target.periodId)}/documents`,
+                  `/api/periods/${encodeURIComponent(context.periodId)}/documents`,
                   {
                     method: "POST",
                     headers: { "content-type": "application/json" },
                     body: JSON.stringify({ filename, markdown }),
                   },
                 )) as { documentId: string };
-                onTarget({
-                  kind: "document",
-                  periodId: target.periodId,
-                  documentId: created.documentId,
-                });
+                onContext(documentContext(context.companyId, context.periodId, created.documentId));
               })
             }
           />
         )}
-        {detail && target.kind === "proposal" && (
-          <ProposalView
+        {detail && view === "review" && (
+          <ReviewView
             detail={detail}
             busy={busy}
+            reviewRunId={context.activity === "review" ? context.object.id : undefined}
             onChanged={() => perform(onChanged)}
-            onApproved={() => onTarget({ kind: "artifacts", periodId: target.periodId })}
+            onApproved={() => onContext(artifactsContext(context.companyId, context.periodId))}
           />
         )}
-        {detail && target.kind === "artifacts" && <ArtifactsView detail={detail} />}
+        {detail && view === "artifacts" && <ArtifactsView detail={detail} />}
         {error && (
           <p
             className="mt-4 rounded border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
@@ -279,7 +295,7 @@ export function Workbench({
         <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-[#006aa7] bg-background/95 text-center">
           <div>
             <UploadIcon className="mx-auto mb-2 size-7 text-[#006aa7]" />
-            <p className="font-medium">Lägg till i {target.periodId}</p>
+            <p className="font-medium">Lägg till i {context.periodId}</p>
           </div>
         </div>
       )}
@@ -290,14 +306,18 @@ export function Workbench({
 function PeriodView({
   detail,
   busy,
-  onTarget,
+  companyId,
+  onContext,
+  onOpenEditor,
   onChooseFiles,
   onRun,
   onDuplicate,
 }: {
   detail: PeriodDetail;
   busy: boolean;
-  onTarget: (target: WorkbenchTarget) => void;
+  companyId: string;
+  onContext: (context: WorkContext) => void;
+  onOpenEditor: () => void;
   onChooseFiles: () => void;
   onRun: () => Promise<void>;
   onDuplicate: (uploadId: string, action: "assign" | "ignore") => Promise<void>;
@@ -367,7 +387,8 @@ function PeriodView({
             document={document}
             notes={detail.documents.filter((note) => note.parentDocumentId === document.id)}
             periodId={detail.period.id}
-            onTarget={onTarget}
+            companyId={companyId}
+            onContext={onContext}
           />
         ))}
       </div>
@@ -383,7 +404,7 @@ function PeriodView({
         <button
           type="button"
           className="text-sm text-[#006aa7] underline underline-offset-2"
-          onClick={() => onTarget({ kind: "artifacts", periodId: detail.period.id })}
+          onClick={() => onContext(artifactsContext(companyId, detail.period.id))}
         >
           Visa godkända filer
         </button>
@@ -392,20 +413,33 @@ function PeriodView({
         <button
           type="button"
           className="text-sm text-[#006aa7] underline underline-offset-2"
-          onClick={() => onTarget({ kind: "editor", periodId: detail.period.id })}
+          onClick={onOpenEditor}
         >
           Skriv ett textunderlag
         </button>
       )}
-      {detail.period.proposal && (
+      {detail.period.review && (
         <button
           type="button"
           className="w-full rounded-md border-l-4 border-l-[#fecc00] p-3 text-left hover:bg-muted/50"
-          onClick={() => onTarget({ kind: "proposal", periodId: detail.period.id })}
+          onClick={() => {
+            if (detail.period.review)
+              onContext({
+                companyId,
+                area: "bookkeeping",
+                periodId: detail.period.id,
+                activity: "review",
+                object: { kind: "run", id: detail.period.review.id },
+              });
+          }}
         >
-          <span className="font-medium">Förslaget är klart</span>
+          <span className="font-medium">
+            {detail.period.review.kind === "proposal"
+              ? "Förslaget är klart"
+              : "Granskningsresultatet är klart"}
+          </span>
           <span className="mt-1 block text-xs text-muted-foreground">
-            {detail.period.proposal.sha256.slice(0, 12)} · öppna för granskning
+            {detail.period.review.sha256.slice(0, 12)} · öppna för granskning
           </span>
         </button>
       )}
@@ -451,9 +485,6 @@ function JobNotice({
   job: NonNullable<PeriodDetail["latestJob"]>;
   periodId: string;
 }) {
-  const outcome = record(job.outcome);
-  const questions = list(outcome.questions).map(record);
-  const reasons = list(outcome.reasons).map(record);
   return (
     <div className="rounded-md border-l-4 border-l-amber-400 p-3 text-sm">
       <p className="font-medium">
@@ -464,11 +495,9 @@ function JobNotice({
             : "Körningen misslyckades"}
       </p>
       {job.errorMessage && <p className="mt-1">{job.errorMessage}</p>}
-      {[...questions, ...reasons].map((item, index) => (
-        <p key={index} className="mt-1">
-          {String(item.prompt ?? item.message ?? item.code ?? "")}
-        </p>
-      ))}
+      {job.status !== "failed" && (
+        <p className="mt-1">Öppna granskningsrapporten nedan för fullständig information.</p>
+      )}
       {job.status !== "out_of_scope" && (
         <p className="mt-2 text-xs text-muted-foreground">
           Komplettera underlaget och skriv sedan ”Bokför {periodId}” i chatten.
@@ -482,19 +511,21 @@ function DocumentRow({
   document,
   notes,
   periodId,
-  onTarget,
+  companyId,
+  onContext,
 }: {
   document: PeriodDocumentSummary;
   notes: PeriodDocumentSummary[];
   periodId: string;
-  onTarget: (target: WorkbenchTarget) => void;
+  companyId: string;
+  onContext: (context: WorkContext) => void;
 }) {
   return (
     <div>
       <button
         type="button"
         className="flex w-full items-center gap-3 p-3 text-left hover:bg-muted/50"
-        onClick={() => onTarget({ kind: "document", periodId, documentId: document.id })}
+        onClick={() => onContext(documentContext(companyId, periodId, document.id))}
       >
         {document.origin === "upload" ? (
           <FileIcon className="size-4" />
@@ -508,7 +539,7 @@ function DocumentRow({
           key={note.id}
           type="button"
           className="flex w-full items-center gap-2 py-2 pr-3 pl-10 text-left text-xs text-muted-foreground hover:bg-muted/50"
-          onClick={() => onTarget({ kind: "document", periodId, documentId: note.id })}
+          onClick={() => onContext(documentContext(companyId, periodId, note.id))}
         >
           <FileTextIcon className="size-3.5" />
           <span className="truncate">{note.filename}</span>
@@ -522,14 +553,16 @@ function DocumentView({
   detail,
   document,
   busy,
-  onTarget,
+  companyId,
+  onContext,
   onSave,
   onRemove,
 }: {
   detail: PeriodDetail;
   document: DocumentDetail;
   busy: boolean;
-  onTarget: (target: WorkbenchTarget) => void;
+  companyId: string;
+  onContext: (context: WorkContext) => void;
   onSave: (markdown: string) => Promise<void>;
   onRemove: () => Promise<void>;
 }) {
@@ -599,9 +632,7 @@ function DocumentView({
               key={note.id}
               type="button"
               className="block w-full truncate rounded border p-2 text-left text-sm hover:bg-muted/50"
-              onClick={() =>
-                onTarget({ kind: "document", periodId: document.periodId, documentId: note.id })
-              }
+              onClick={() => onContext(documentContext(companyId, document.periodId, note.id))}
             >
               {note.filename}
             </button>
@@ -668,33 +699,41 @@ function TextEditor({
   );
 }
 
-function ProposalView({
+function ReviewView({
   detail,
   busy,
+  reviewRunId,
   onChanged,
   onApproved,
 }: {
   detail: PeriodDetail;
   busy: boolean;
+  reviewRunId?: string;
   onChanged: () => Promise<void>;
   onApproved: () => void;
 }) {
-  const proposal = detail.period.proposal;
+  const review = detail.period.review;
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
-  if (!proposal)
-    return <p className="text-sm text-muted-foreground">Det finns inget aktuellt förslag.</p>;
-  const outcome = record(proposal.outcome);
-  const bookkeeping = record(record(outcome.canonical_outputs).bookkeeping);
-  const transactions = list(record(bookkeeping.ledger).transactions).map(record);
-  const warnings = list(outcome.warnings).map(record);
+  if (!review)
+    return (
+      <p className="text-sm text-muted-foreground">Det finns inget aktuellt granskningsresultat.</p>
+    );
+  if (reviewRunId && review.id !== reviewRunId)
+    return (
+      <p className="text-sm text-muted-foreground">
+        Granskningsrapporten har ersatts av ett nyare resultat. Gå tillbaka och öppna den aktuella
+        granskningen.
+      </p>
+    );
+  const runId = reviewRunId ?? review.id;
   const approve = async () => {
     setError(undefined);
     try {
-      await request(`/api/runs/${proposal.id}/decision`, {
+      await request(`/api/runs/${runId}/decision`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decision: "approved", expectedRunSha256: proposal.sha256 }),
+        body: JSON.stringify({ decision: "approved", expectedRunSha256: review.sha256 }),
       });
       setOpen(false);
       await onChanged();
@@ -706,63 +745,35 @@ function ProposalView({
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-lg font-medium">Bokföringsförslag</h2>
-        <p className="font-mono text-xs text-muted-foreground">{proposal.sha256.slice(0, 12)}</p>
+        <h2 className="text-lg font-medium">Granskningsrapport</h2>
+        <p className="font-mono text-xs text-muted-foreground">{review.sha256.slice(0, 12)}</p>
       </div>
-      {detail.startProfile && (
-        <div className="space-y-4 rounded-md border p-3">
-          <p className="text-xs text-muted-foreground">
-            Startförslaget omfattar företagets grunduppgifter och bokföringsinställningar.
-          </p>
-          <StartProfileSection title="Företag" facts={detail.startProfile.identity} />
-          <StartProfileSection title="Bokföring" facts={detail.startProfile.accounting} />
-          {detail.startProfile.evidence.length > 0 && (
-            <StartProfileSection
-              title="Övriga företagsuppgifter"
-              facts={detail.startProfile.evidence}
-            />
-          )}
-        </div>
-      )}
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/20 p-3 font-sans text-sm">
-        {proposal.reviewMarkdown}
-      </pre>
-      {transactions.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="font-medium">Transaktioner</h3>
-          {transactions.map((transaction, index) => (
-            <div
-              key={String(transaction.verification_id ?? index)}
-              className="rounded-md border p-3 text-sm"
-            >
-              <p className="font-medium">{String(transaction.description ?? "Transaktion")}</p>
-              <p className="text-xs text-muted-foreground">{String(transaction.date ?? "")}</p>
-              <p className="mt-2 font-mono text-xs">
-                {list(transaction.lines)
-                  .map((lineValue) => {
-                    const line = record(lineValue);
-                    return `${String(line.account ?? "?")} D ${String(line.debit ?? "0.00 SEK")} K ${String(line.credit ?? "0.00 SEK")}`;
-                  })
-                  .join(" · ")}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-      {warnings.length > 0 && (
-        <div className="rounded-md border-l-4 border-l-amber-400 p-3 text-sm">
-          <h3 className="font-medium">Varningar</h3>
-          {warnings.map((warning, index) => (
-            <p key={index}>
-              {String(warning.code ?? "VARNING")}: {String(warning.message ?? "")}
-            </p>
-          ))}
-        </div>
-      )}
+      <iframe
+        title={`Granskningsrapport ${detail.period.id}`}
+        src={`/api/runs/${runId}/review?format=html`}
+        sandbox=""
+        className="h-[70vh] min-h-[36rem] w-full rounded-md border bg-white"
+      />
+      <div className="flex flex-wrap gap-3 text-sm">
+        <a
+          className="text-[#006aa7] underline underline-offset-2"
+          href={`/api/runs/${runId}/review?format=pdf`}
+        >
+          Ladda ned PDF
+        </a>
+        <a
+          className="text-[#006aa7] underline underline-offset-2"
+          href={`/api/runs/${runId}/review?format=json`}
+        >
+          Ladda ned JSON-källa
+        </a>
+      </div>
       <p className="text-sm text-muted-foreground">Vill du ändra något, beskriv det i chatten.</p>
-      <Button type="button" disabled={busy} onClick={() => setOpen(true)}>
-        Godkänn
-      </Button>
+      {review.approvable && (
+        <Button type="button" disabled={busy} onClick={() => setOpen(true)}>
+          Godkänn
+        </Button>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -770,8 +781,8 @@ function ProposalView({
             <DialogTitle>Godkänn förslaget?</DialogTitle>
             <DialogDescription>
               Du godkänner exakt förslag{" "}
-              <span className="font-mono">{proposal.sha256.slice(0, 12)}</span> för{" "}
-              {detail.period.id}.
+              <span className="font-mono">{review.sha256.slice(0, 12)}</span> för {detail.period.id}
+              .
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -783,25 +794,6 @@ function ProposalView({
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function StartProfileSection({ title, facts }: { title: string; facts: StartProfileFact[] }) {
-  return (
-    <section>
-      <h3 className="mb-2 font-medium">{title}</h3>
-      <dl className="space-y-2 text-sm">
-        {facts.map((fact) => (
-          <div
-            key={`${fact.label}-${fact.value}`}
-            className="grid grid-cols-[8rem_minmax(0,1fr)] gap-2"
-          >
-            <dt className="text-muted-foreground">{fact.label}</dt>
-            <dd className="min-w-0 break-words">{fact.value}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
   );
 }
 
@@ -826,10 +818,13 @@ function ArtifactsView({ detail }: { detail: PeriodDetail }) {
   );
 }
 
-function titleFor(target: WorkbenchTarget, document?: DocumentDetail) {
-  if (target.kind === "document") return document?.filename ?? "Dokument";
-  if (target.kind === "editor") return "Nytt textunderlag";
-  if (target.kind === "proposal") return "Förslag";
-  if (target.kind === "artifacts") return "Godkända filer";
-  return `Underlag för ${target.periodId}`;
+function titleFor(
+  view: "period" | "document" | "editor" | "review" | "artifacts",
+  document?: DocumentDetail,
+) {
+  if (view === "document") return document?.filename ?? "Dokument";
+  if (view === "editor") return "Nytt textunderlag";
+  if (view === "review") return "Granskning";
+  if (view === "artifacts") return "Godkända filer";
+  return "Underlag";
 }

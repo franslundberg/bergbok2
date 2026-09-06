@@ -11,6 +11,7 @@ import { createDatabase } from "../lib/bergbok/database.ts";
 import {
   assignUpload,
   addDocumentNote,
+  appendChatMessage,
   companySummary,
   conversationEvents,
   createTextDocument,
@@ -22,6 +23,7 @@ import {
   receiveUpload,
   removePeriodDocument,
   replaceTextDocument,
+  reviewContent,
   requestProposalChanges,
   safeFilename,
   validateUploadContent,
@@ -35,8 +37,20 @@ import {
 } from "../lib/bergbok/chat-tools.ts";
 import { materializeChatSnapshot } from "../lib/bergbok/snapshot.ts";
 import { formatElapsed } from "../lib/bergbok/job-progress.ts";
-import { buildStartProfile } from "../lib/bergbok/start-profile.ts";
-import { claimWorkbenchNavigation } from "../lib/bergbok/workbench-navigation.ts";
+import { claimWorkContextNavigation } from "../lib/bergbok/workbench-navigation.ts";
+import {
+  defaultWorkContext,
+  documentsContext,
+  isWorkContextValidForSummary,
+  restoreWorkContext,
+  switchWorkContextPeriod,
+  validateWorkContextDomain,
+} from "../lib/bergbok/work-context.ts";
+import {
+  parseWorkContext,
+  validateWorkContext,
+  type CompanySummary,
+} from "../lib/bergbok/types.ts";
 import {
   clampWorkbenchWidth,
   DEFAULT_WORKBENCH_WIDTH,
@@ -82,6 +96,185 @@ test("bookkeeping progress uses calm elapsed-time buckets", () => {
   assert.equal(formatElapsed(3600), "60 minuter");
 });
 
+test("WorkContext validates activities, objects and domain compatibility", () => {
+  const documents = documentsContext("fiktiv-ab", "2026-05");
+  assert.doesNotThrow(() => validateWorkContext(documents));
+  assert.deepEqual(parseWorkContext(documents), documents);
+  assert.throws(() => validateWorkContext({ ...documents, area: "payroll" }), /WorkContext.area/);
+  assert.throws(
+    () =>
+      validateWorkContext({
+        ...documents,
+        activity: "review",
+        object: { kind: "document", id: "doc-1" },
+      }),
+    /WorkContext.object/,
+  );
+  assert.throws(
+    () =>
+      validateWorkContext({
+        ...documents,
+        activity: "artifacts",
+        object: { kind: "run", id: "run-1" },
+      }),
+    /WorkContext.object/,
+  );
+  const summary = {
+    company: { id: "fiktiv-ab", name: "Fiktiv AB", language: "sv" },
+    state: { sequence: 0, sha256: "a".repeat(64) },
+    periods: [
+      {
+        id: "2026-05",
+        sequence: 1,
+        kind: "ordinary",
+        start: "2026-05-01",
+        end: "2026-05-31",
+        status: "preliminary",
+        uploadCount: 1,
+        jobId: null,
+        review: { id: "run-1", sha256: "b".repeat(64), kind: "proposal", approvable: true },
+      },
+    ],
+    activePeriodId: "2026-05",
+    uploads: [],
+    artifacts: [],
+  } as CompanySummary;
+  assert.doesNotThrow(() =>
+    validateWorkContextDomain(
+      {
+        companyId: "fiktiv-ab",
+        area: "bookkeeping",
+        periodId: "2026-05",
+        activity: "review",
+        object: { kind: "run", id: "run-1" },
+      },
+      summary,
+    ),
+  );
+  assert.throws(
+    () =>
+      validateWorkContextDomain(
+        {
+          companyId: "other-company",
+          area: "bookkeeping",
+          periodId: "2026-05",
+          activity: "documents",
+        },
+        summary,
+      ),
+    /companyId/,
+  );
+  assert.equal(
+    isWorkContextValidForSummary(
+      {
+        companyId: "fiktiv-ab",
+        area: "bookkeeping",
+        periodId: "missing",
+        activity: "documents",
+      },
+      summary,
+    ),
+    false,
+  );
+  assert.equal(
+    isWorkContextValidForSummary(
+      {
+        companyId: "fiktiv-ab",
+        area: "bookkeeping",
+        periodId: "2026-05",
+        activity: "review",
+        object: { kind: "run", id: "old-run" },
+      },
+      summary,
+    ),
+    false,
+  );
+  assert.deepEqual(
+    switchWorkContextPeriod(
+      {
+        companyId: "fiktiv-ab",
+        area: "bookkeeping",
+        periodId: "2026-05",
+        activity: "review",
+        object: { kind: "run", id: "run-1" },
+      },
+      "Start",
+    ),
+    documentsContext("fiktiv-ab", "Start"),
+  );
+});
+
+test("new chat events retain the submitted WorkContext snapshot", () => {
+  const database = createDatabase(":memory:");
+  const context = documentsContext("fiktiv-ab", "2026-05");
+  appendChatMessage("user", "message-1", "Visa underlagen", "owner-1", database, context);
+  const event = conversationEvents(0, database).at(-1);
+  assert.deepEqual(event?.payload.workContext, context);
+  appendChatMessage("assistant", "message-2", "Här är underlagen.", "bergbok-chat", database);
+  assert.equal(conversationEvents(0, database).at(-1)?.payload.workContext, undefined);
+});
+
+test("WorkContext restore falls back from invalid sessions to the active period", () => {
+  const summary = {
+    company: { id: "fiktiv-ab", name: "Fiktiv AB", language: "sv" },
+    state: { sequence: 0, sha256: "a".repeat(64) },
+    periods: [
+      {
+        id: "Start",
+        sequence: 1,
+        kind: "start",
+        start: null,
+        end: "2026-05-11",
+        status: "approved",
+        uploadCount: 0,
+        jobId: null,
+        review: null,
+      },
+      {
+        id: "2026-05",
+        sequence: 2,
+        kind: "ordinary",
+        start: "2026-05-12",
+        end: "2026-05-31",
+        status: "working",
+        uploadCount: 0,
+        jobId: null,
+        review: null,
+      },
+    ],
+    activePeriodId: "2026-05",
+    uploads: [],
+    artifacts: [],
+  } as CompanySummary;
+  assert.deepEqual(defaultWorkContext(summary), documentsContext("fiktiv-ab", "2026-05"));
+  assert.deepEqual(
+    restoreWorkContext(
+      {
+        companyId: "fiktiv-ab",
+        area: "bookkeeping",
+        periodId: "missing",
+        activity: "documents",
+      },
+      summary,
+    ),
+    documentsContext("fiktiv-ab", "2026-05"),
+  );
+  assert.deepEqual(
+    restoreWorkContext(
+      {
+        companyId: "fiktiv-ab",
+        area: "bookkeeping",
+        periodId: "2026-05",
+        activity: "documents",
+        object: { kind: "document", id: "gone" },
+      },
+      summary,
+      ["current"],
+    ),
+    documentsContext("fiktiv-ab", "2026-05"),
+  );
+});
+
 test("database bootstraps Fiktiv AB with three empty periods", () => {
   const database = createDatabase(":memory:");
   assert.deepEqual(periodValue("Start", database), {
@@ -101,88 +294,45 @@ test("database bootstraps Fiktiv AB with three empty periods", () => {
   );
 });
 
-test("Start review combines proposed core, fixed policy and cited evidence facts", () => {
-  const profile = buildStartProfile(
-    {
-      proposed_changes: [
-        {
-          action: "initialize_core_state",
-          core: {
-            organization: { name: "Fiktiv AB", organization_number: "559999-0008" },
-            registrations: {
-              vat_number: "SE559999000801",
-              eori_number: "SE5599990008",
-            },
-            address: {
-              street: "Karl Gerhards väg 27",
-              postal_code: "133 35",
-              city: "Saltsjöbaden",
-              country: "SE",
-            },
-            bookkeeping_start_date: "2026-05-12",
-            policies: {
-              accounting_method: "invoice",
-              fiscal_year: { start: "2026-01-01", end: "2026-12-31" },
-            },
-          },
-        },
-      ],
-    },
-    [
-      {
-        id: "document-1",
-        filename: "bolaget.md",
-        contentUrl: "/api/documents/upload-1",
-        text: [
-          "* Aktier: 100 000 aktier, alla ägs av Filippa Stark. Aktiekapital: 25 000 kr.",
-          "* Styrelseledamot: Filippa Stark, ledamot, personnummer: 900101-0000.",
-          "* Bankgironummer: 5296-6666. Namn Fiktiv AB.",
-          "* Betalkort, payment card: Mastercard, SEB Commercial debit xxx4444.",
-          "* Vanlig BAS-kontoplan ska användas.",
-        ].join("\n"),
-      },
-    ],
-  );
-  assert.ok(profile);
-  assert.deepEqual(
-    profile.accounting.map(({ label, value }) => [label, value]),
-    [
-      ["Bokföringsmetod", "Faktureringsmetoden"],
-      ["Räkenskapsår", "2026-01-01–2026-12-31"],
-      ["Momsperiod", "Kvartalsvis"],
-      ["Kontoplan", "BAS"],
-      ["Bokföringsstart", "2026-05-12"],
-    ],
-  );
-  assert.equal(
-    profile.evidence.find(({ label }) => label === "Betalkort")?.value,
-    "Mastercard, SEB Commercial debit xxx4444",
-  );
-  assert.equal(
-    profile.evidence.find(({ label }) => label === "Styrelseledamot")?.value,
-    "Filippa Stark, ledamot",
-  );
-  assert.ok(profile.evidence.every(({ contentUrl }) => contentUrl === "/api/documents/upload-1"));
-});
-
-test("a completed chat tool can navigate the workbench only once", () => {
+test("a completed chat tool can navigate the work context only once", () => {
   const handled = new Set<string>();
-  const periodResult = { workbench: { kind: "period", periodId: "Start" } };
-  assert.deepEqual(claimWorkbenchNavigation(handled, "call-1", periodResult), {
-    kind: "period",
+  const periodResult = {
+    workContext: {
+      companyId: "fiktiv-ab",
+      area: "bookkeeping",
+      periodId: "Start",
+      activity: "documents",
+    },
+  };
+  assert.deepEqual(claimWorkContextNavigation(handled, "call-1", periodResult), {
+    companyId: "fiktiv-ab",
+    area: "bookkeeping",
     periodId: "Start",
+    activity: "documents",
   });
   assert.equal(
-    claimWorkbenchNavigation(handled, "call-1", {
-      workbench: { kind: "period", periodId: "2026-05" },
+    claimWorkContextNavigation(handled, "call-1", {
+      workContext: { ...periodResult.workContext, periodId: "2026-05" },
     }),
     null,
   );
   assert.deepEqual(
-    claimWorkbenchNavigation(handled, "call-2", {
-      workbench: { kind: "proposal", periodId: "Start" },
+    claimWorkContextNavigation(handled, "call-2", {
+      workContext: {
+        companyId: "fiktiv-ab",
+        area: "bookkeeping",
+        periodId: "Start",
+        activity: "review",
+        object: { kind: "run", id: "run-1" },
+      },
     }),
-    { kind: "proposal", periodId: "Start" },
+    {
+      companyId: "fiktiv-ab",
+      area: "bookkeeping",
+      periodId: "Start",
+      activity: "review",
+      object: { kind: "run", id: "run-1" },
+    },
   );
 });
 
@@ -247,6 +397,37 @@ test("real upload remains unassigned until explicit confirmation", async () => {
     const job = enqueueRun(session, "Start", database);
     assert.equal(job.status, "queued");
     assert.equal(claimJob(database)?.id, job.id);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an upload explicitly targeted at the selected period is assigned there", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bergbok-web-selected-upload-test-"));
+  process.env.BERGBOK_DATA_ROOT = root;
+  process.env.BERGBOK_OWNER_EMAIL = session.email;
+  try {
+    const database = createDatabase(":memory:");
+    database
+      .prepare(
+        "INSERT INTO bookkeeping_jobs (id,company_id,period_id,status,created_by,created_at,finished_at,run_id) VALUES ('selected-job','fiktiv-ab','Start','proposal','owner-1',1,1,'selected-run')",
+      )
+      .run();
+    database
+      .prepare(
+        "INSERT INTO bookkeeping_runs (id,company_id,period_id,job_id,outcome_kind,run_ref_json,run_sha256,decision,decided_at,created_at) VALUES ('selected-run','fiktiv-ab','Start','selected-job','proposal','{}',?,'approved',2,1)",
+      )
+      .run("a".repeat(64));
+    const uploaded = await receiveUpload(
+      session,
+      new File(["Vald period\n"], "vald-period.md", { type: "text/markdown" }),
+      database,
+      "2026-05",
+    );
+    assert.equal(uploaded.status, "assigned");
+    const summary = await companySummary(database);
+    assert.equal(summary.periods.find(({ id }) => id === "2026-05")?.uploadCount, 1);
+    assert.equal(summary.periods.find(({ id }) => id === "Start")?.uploadCount, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -398,7 +579,7 @@ test("an unassigned upload does not supersede a proposal but a Docset change doe
       .run();
     database
       .prepare(
-        "INSERT INTO bookkeeping_runs (id,company_id,period_id,job_id,outcome_kind,run_ref_json,run_sha256,review_markdown,outcome_json,created_at) VALUES ('run','fiktiv-ab','Start','job','proposal','{}',?,'review','{}',1)",
+        "INSERT INTO bookkeeping_runs (id,company_id,period_id,job_id,outcome_kind,run_ref_json,run_sha256,created_at) VALUES ('run','fiktiv-ab','Start','job','proposal','{}',?,1)",
       )
       .run("b".repeat(64));
     await receiveUpload(
@@ -448,7 +629,7 @@ test("a chat change request rejects the exact current proposal with the user's n
       return Bookkeeping.consolidateOffline(caseBundle, "offline-change-request-test-v1", {
         input: {
           schema_id: "se.bergbok.bookkeeping-input",
-          schema_version: "2.0",
+          schema_version: "3.0",
           company_id: "fiktiv-ab",
           period_id: "Start",
           mode: "start",
@@ -461,6 +642,7 @@ test("a chat change request rejects the exact current proposal with the user's n
         core: {
           organization: { name: "Fiktiv AB", organization_number: "559999-9999" },
           evidence_document_ids: [documentId],
+          policies: { bookkeeping: bookkeepingCorePolicy() },
         },
         assessment: { questions: [], warnings: [], reasons: [] },
       });
@@ -485,7 +667,12 @@ test("a chat change request rejects the exact current proposal with the user's n
 });
 
 test("chat exposes mutations only on the first step and never exposes approval", () => {
-  const tools = createApplicationTools(session, { kind: "period", periodId: "Start" });
+  const tools = createApplicationTools(session, {
+    companyId: "fiktiv-ab",
+    area: "bookkeeping",
+    periodId: "Start",
+    activity: "documents",
+  });
   assert.ok(MUTATION_TOOL_NAMES.every((name) => name in tools));
   assert.ok(!("approve" in tools));
   assert.ok(!("approve_proposal" in tools));
@@ -584,7 +771,13 @@ test("worker records deterministic needs-input outcomes and timeline questions",
           domain: "bookkeeping",
           caseRef: caseBundle.ref,
           questions: [{ question_id: "BKQ1", prompt: "Vilket belopp gäller?" }] as never[],
-          review: { language: "sv", summary: "En fråga måste besvaras" },
+          review: {
+            schema_version: "1.0",
+            language: "sv",
+            narrative_source: "ai",
+            summary: "En fråga måste besvaras",
+            transaction_summaries: [],
+          },
           provenance: { module_id: "test.bookkeeping", module_version: "1" },
         });
       })(),
@@ -601,6 +794,9 @@ test("worker records deterministic needs-input outcomes and timeline questions",
     assert.ok(event);
     const questions = event.payload.questions as Array<{ prompt: string }>;
     assert.equal(questions[0].prompt, "Vilket belopp gäller?");
+    const report = await reviewContent(result.runId, "html", database);
+    assert.equal(report.mediaType, "text/html; charset=utf-8");
+    assert.match(report.bytes.toString("utf8"), /Vilket belopp gäller\?/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -628,7 +824,7 @@ test("Start, May and June can be proposed, approved and rendered in order", asyn
         return Bookkeeping.consolidateOffline(caseBundle, "offline-deterministic-web-test-v1", {
           input: {
             schema_id: "se.bergbok.bookkeeping-input",
-            schema_version: "2.0",
+            schema_version: "3.0",
             company_id: "fiktiv-ab",
             period_id: period.id,
             mode: period.kind,
@@ -636,10 +832,76 @@ test("Start, May and June can be proposed, approved and rendered in order", asyn
               name: "Fiktiv AB",
               organization_number: "559999-9999",
             },
-            transactions: [],
+            transactions:
+              period.id === "2026-05"
+                ? [
+                    {
+                      source_id: "sale:2026-05",
+                      date: "2026-05-15",
+                      description: "Sale with output VAT",
+                      evidence_document_ids: [documentId],
+                      lines: [
+                        {
+                          account: "1930",
+                          account_name: "Bank",
+                          debit: "125.00 SEK",
+                          credit: "0.00 SEK",
+                        },
+                        {
+                          account: "3001",
+                          account_name: "Sales",
+                          debit: "0.00 SEK",
+                          credit: "100.00 SEK",
+                        },
+                        {
+                          account: "2611",
+                          account_name: "Output VAT",
+                          debit: "0.00 SEK",
+                          credit: "25.00 SEK",
+                        },
+                      ],
+                    },
+                  ]
+                : period.id === "2026-06"
+                  ? [
+                      {
+                        source_id: "vat-close:2026-Q2",
+                        date: "2026-06-30",
+                        description: "Close quarterly VAT",
+                        evidence_document_ids: [documentId],
+                        lines: [
+                          {
+                            account: "2611",
+                            account_name: "Output VAT",
+                            debit: "25.00 SEK",
+                            credit: "0.00 SEK",
+                          },
+                          {
+                            account: "2650",
+                            account_name: "VAT settlement",
+                            debit: "0.00 SEK",
+                            credit: "25.00 SEK",
+                          },
+                        ],
+                      },
+                    ]
+                  : [],
             open_item_changes: [],
             reconciliations: [],
-            vat: { status: "not_due" },
+            vat:
+              period.id === "2026-06"
+                ? {
+                    status: "due",
+                    closing_transaction_source_id: "vat-close:2026-Q2",
+                    declaration_boxes: {
+                      "10": "25.00 SEK",
+                      "11": "0.00 SEK",
+                      "12": "0.00 SEK",
+                      "48": "0.00 SEK",
+                      "49": "25.00 SEK",
+                    },
+                  }
+                : { status: "not_due" },
           },
           ...(period.kind === "start"
             ? {
@@ -649,13 +911,47 @@ test("Start, May and June can be proposed, approved and rendered in order", asyn
                     organization_number: "559999-9999",
                   },
                   evidence_document_ids: [documentId],
+                  policies: { bookkeeping: bookkeepingCorePolicy() },
                 },
               }
             : {}),
           assessment: { questions: [], warnings: [], reasons: [] },
         });
       });
-      assert.equal(processed.outcome.kind, "proposal");
+      assert.equal(
+        processed.outcome.kind,
+        "proposal",
+        `${periodId}: ${JSON.stringify(processed.outcome.questions ?? processed.outcome.reasons)}`,
+      );
+      if (periodId === "Start") {
+        const source = await reviewContent(processed.runId, "json", database);
+        assert.equal(JSON.parse(source.bytes.toString("utf8")).payload.contract_version, "2.0");
+        const html = await reviewContent(processed.runId, "html", database);
+        assert.match(html.bytes.toString("utf8"), /Bokföringsgranskning/);
+        assert.match(html.bytes.toString("utf8"), /Kvartalsvis/);
+        const pdf = await reviewContent(processed.runId, "pdf", database);
+        assert.match(pdf.bytes.subarray(0, 8).toString("latin1"), /^%PDF-/);
+      }
+      if (periodId === "2026-05") {
+        assert.equal(
+          processed.outcome.canonical_outputs.bookkeeping.vat_period.due_in_period,
+          false,
+        );
+        assert.equal(
+          processed.outcome.canonical_outputs.bookkeeping.vat_period.cycle_end,
+          "2026-06-30",
+        );
+      }
+      if (periodId === "2026-06") {
+        assert.equal(
+          processed.outcome.canonical_outputs.bookkeeping.vat_period.due_in_period,
+          true,
+        );
+        assert.equal(
+          processed.outcome.canonical_outputs.bookkeeping.vat_period.closing_transaction_source_id,
+          "vat-close:2026-Q2",
+        );
+      }
       await decideRun(session, processed.runId, processed.stored.ref.sha256, "approved", database);
     }
     const summary = await companySummary(database);
@@ -664,11 +960,23 @@ test("Start, May and June can be proposed, approved and rendered in order", asyn
       ["approved", "approved", "approved"],
     );
     assert.equal(summary.activePeriodId, null);
-    assert.equal(summary.artifacts.length, 6);
+    assert.equal(summary.artifacts.length, 12);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+function bookkeepingCorePolicy() {
+  return {
+    chart_of_accounts: "BAS",
+    vat_reporting: {
+      frequency: "quarterly",
+      input_accounts: ["2641"],
+      output_accounts: ["2611"],
+      settlement_account: "2650",
+    },
+  };
+}
 
 test("filenames cannot escape application storage", () => {
   assert.equal(safeFilename("../../receipt.pdf"), "receipt.pdf");

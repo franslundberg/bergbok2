@@ -56,6 +56,13 @@ export function scopeReasons(input, caseBundle) {
   if (core?.accounting_method !== "invoice") reasons.push({ code: "UNSUPPORTED_ACCOUNTING_METHOD", message: "Only the invoicing method is supported" });
   if (!calendarFiscalYear(core?.fiscal_year)) reasons.push({ code: "UNSUPPORTED_FISCAL_YEAR", message: "Only a calendar financial year is supported" });
   if (bookkeeping?.verification_series !== "A") reasons.push({ code: "UNSUPPORTED_VERIFICATION_SERIES", message: "The prototype supports verification series A" });
+  if (bookkeeping?.chart_of_accounts !== "BAS") reasons.push({ code: "UNSUPPORTED_CHART_OF_ACCOUNTS", message: "The prototype supports the BAS chart of accounts" });
+  const vatPolicy = bookkeeping?.vat_reporting;
+  if (vatPolicy?.frequency !== "quarterly") {
+    reasons.push({ code: "UNSUPPORTED_VAT_FREQUENCY", message: "The prototype supports quarterly VAT reporting" });
+  } else if (!validVatAccountPolicy(vatPolicy)) {
+    reasons.push({ code: "INVALID_VAT_ACCOUNT_POLICY", message: "VAT reporting requires configured input, output, and settlement accounts" });
+  }
   if (input.profile !== undefined && input.profile !== bookkeeping?.profile) reasons.push({ code: "POLICY_MISMATCH", message: "Input profile differs from the fixed effective policy" });
   if (input.currency !== undefined && input.currency !== core?.currency) reasons.push({ code: "POLICY_MISMATCH", message: "Input currency differs from the fixed effective policy" });
   if (input.organization?.country !== undefined && input.organization.country !== core?.country) reasons.push({ code: "POLICY_MISMATCH", message: "Input country differs from the fixed effective policy" });
@@ -67,6 +74,18 @@ export function scopeReasons(input, caseBundle) {
     reasons.push({ code: "PERIOD_MISMATCH", message: "The bookkeeping input names a different period" });
   }
   return reasons;
+}
+
+function validVatAccountPolicy(value) {
+  if (!isPlainObject(value)
+      || !Array.isArray(value.input_accounts) || !value.input_accounts.length
+      || !Array.isArray(value.output_accounts) || !value.output_accounts.length
+      || !/^\d{4}$/.test(value.settlement_account ?? "")) return false;
+  const inputs = value.input_accounts;
+  const outputs = value.output_accounts;
+  const all = [...inputs, ...outputs, value.settlement_account];
+  return all.every((account) => typeof account === "string" && /^\d{4}$/.test(account))
+    && new Set(all).size === all.length;
 }
 
 function calendarFiscalYear(value) {

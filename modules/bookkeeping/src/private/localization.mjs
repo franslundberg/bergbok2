@@ -1,0 +1,57 @@
+const SWEDISH_MESSAGES = Object.freeze({
+  ACCOUNT_INVALID: "Ange ett giltigt fyrsiffrigt BAS-konto.",
+  ACCOUNT_UNKNOWN: "Kontot kunde inte identifieras.",
+  BOOKKEEPING_MONEY_INVALID: "Bokföringsbeloppet är ogiltigt.",
+  EVIDENCE_NOT_IN_DOCSET: "Hänvisningen måste avse ett dokument i periodens underlag.",
+  OPEN_ITEM_CHANGES_INVALID: "Öppna betalningsposter måste anges som en lista.",
+  OPEN_ITEM_CHANGES_NOT_ALLOWED: "Den här periodtypen får inte innehålla ändringar av öppna betalningsposter.",
+  PERIOD_IMBALANCE: "Periodens fullständiga förändring är inte balanserad.",
+  PREVIOUS_BOOKKEEPING_MONEY_INVALID: "Det tidigare bokföringsunderlagets belopp är ogiltigt.",
+  PAYROLL_POSTINGS_NOT_ALLOWED: "Den här periodtypen får inte innehålla löneposteringar.",
+  PAYROLL_TRANSACTION_OUTSIDE_PERIOD: "En lönetransaktion ligger utanför bokföringsperioden.",
+  RECONCILIATION_DUPLICATE: "Kontot har redan stämts av en gång.",
+  RECONCILIATION_MISMATCH: "Bokfört saldo stämmer inte med det externa underlaget.",
+  RECONCILIATIONS_INVALID: "Avstämningar måste anges som en lista.",
+  START_RECONCILIATIONS_NOT_ALLOWED: "Start får inte innehålla avstämningar.",
+  START_VAT_NOT_ALLOWED: "Start får inte fastställa moms.",
+  TRANSACTIONS_NOT_ALLOWED: "Den här periodtypen får inte innehålla transaktioner.",
+  TRANSACTION_IMBALANCE: "Transaktionens debet och kredit balanserar inte.",
+  UNSUPPORTED_ACCOUNTING_METHOD: "Endast faktureringsmetoden stöds.",
+  UNSUPPORTED_CHART_OF_ACCOUNTS: "Endast BAS-kontoplanen stöds.",
+  UNSUPPORTED_COUNTRY: "Endast Sverige stöds.",
+  UNSUPPORTED_CURRENCY: "Endast SEK stöds.",
+  UNSUPPORTED_FISCAL_YEAR: "Endast kalenderår stöds.",
+  UNSUPPORTED_MODE: "De stödda lägena är start, import och ordinary.",
+  UNSUPPORTED_PROFILE: "Den angivna bokföringsprofilen stöds inte.",
+  UNSUPPORTED_VERIFICATION_SERIES: "Prototypen stöder verifikationsserie A.",
+  UNSUPPORTED_VAT_FREQUENCY: "Prototypen stöder kvartalsvis momsredovisning.",
+  INVALID_VAT_ACCOUNT_POLICY: "Momsprincipen måste ange konton för ingående moms, utgående moms och momsredovisning.",
+  VAT_ACCOUNT_NOT_CLOSED: "Ett konfigurerat momskonto är inte nollställt efter momsombokningen.",
+  VAT_ACCOUNT_NOT_CONFIGURED: "En momstransaktion använder ett konto som inte ingår i bolagets momsprincip.",
+  VAT_BOXES_NOT_DUE: "Deklarationsrutor får inte anges före kvartalsslutet.",
+  VAT_BOXES_REQUIRED: "Deklarationsrutor krävs vid kvartalsslutet.",
+  VAT_CLOSING_ACCOUNT_INVALID: "Momsombokningen innehåller ett konto utanför bolagets momsprincip.",
+  VAT_CLOSING_DATE_MISMATCH: "Momsombokningen måste dateras på kvartalets slutdag.",
+  VAT_CLOSING_NOT_DUE: "En momsombokning får inte göras före kvartalsslutet.",
+  VAT_CLOSING_NOT_LAST: "Momsombokningen måste vara periodens sista transaktion.",
+  VAT_CLOSING_REQUIRED: "En momsombokning krävs vid kvartalsslutet.",
+  VAT_CLOSING_UNKNOWN: "Den angivna momsombokningen finns inte bland periodens transaktioner.",
+  VAT_DUE_MISMATCH: "Momsstatusen stämmer inte med bolagets kvartalsvisa redovisningscykel.",
+  VAT_INPUT_ACCOUNT_SIDE_INVALID: "Ett konto för ingående moms har kreditsaldo före momsombokningen.",
+  VAT_INPUT_BOX_MISMATCH: "Ruta 48 stämmer inte med saldot på konfigurerade konton för ingående moms.",
+  VAT_INVALID: "Momsuppgifterna är ogiltiga.",
+  VAT_OUTPUT_ACCOUNT_SIDE_INVALID: "Ett konto för utgående moms har debetsaldo före momsombokningen.",
+  VAT_OUTPUT_BOXES_MISMATCH: "Rutorna 10–12 stämmer inte med saldot på konfigurerade konton för utgående moms.",
+  VAT_OUTPUT_REQUIRED: "Momsuppgifter krävs vid den konfigurerade rapportperiodens slut.",
+  VAT_PERIOD_DATES_DETERMINISTIC: "Momsperiodens datum bestäms av bolagets redovisningscykel och får inte anges av AI.",
+  VAT_PERIOD_SPANS_MULTIPLE_DEADLINES: "En bokföringsperiod får inte omfatta mer än ett kvartalsslut för moms.",
+  VAT_SETTLEMENT_MISMATCH: "Momsredovisningskontot får inte rätt belopp från ruta 49.",
+});
+
+export function localizeBookkeepingItems(items, language, textKey) {
+  if (language !== "sv") return items;
+  return items.map((item) => {
+    const replacement = SWEDISH_MESSAGES[item.code];
+    return replacement ? { ...item, [textKey]: replacement } : item;
+  });
+}

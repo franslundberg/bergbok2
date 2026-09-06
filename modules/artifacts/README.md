@@ -3,17 +3,26 @@
 Artifacts deterministically materializes canonical output data behind:
 
 ```text
-render(outputSnapshot, artifactProfile) -> ArtifactBundle
+await render(outputSnapshot, artifactProfile) -> ArtifactBundle
 ```
 
 Format-specific renderers are private under `src/private/`. The module performs
 no submission, payment, filing, email, or other delivery action, and it marks
 unapproved material as preview output.
 
-Review Markdown and payslip PDFs use the `sv` or `en` language frozen in the
-output snapshot. The renderer has no language override; snapshots without
-language metadata remain Swedish for compatibility. SIE, VAT XML, and VAT
-verification PDFs are unchanged by this setting.
+`OutputSnapshot` v2 is the approval-bound, persisted review source. The private
+review model validates and interprets it once; the HTML and PDF renderers only
+lay out that shared model. The registered review profiles are:
+
+- `review-source-json-v1` for the exact canonical snapshot;
+- `review-html-v1` for standalone semantic HTML with collapsed transaction
+  details;
+- `review-pdf-v1` for a complete, fully expanded A4 report.
+
+Review artifacts and payslip PDFs use the `sv` or `en` language frozen in the
+snapshot. There is no language override and no legacy snapshot adapter. VAT
+XML and VAT verification PDF dates come from the kernel-derived cycle start
+and end in Bookkeeping schema v3.
 
 Run `npm run test:artifacts` or `npm run demo:artifacts` from the repository
 root. See the root [module handbook](../../MODULES.md) for supported profiles.

@@ -30,7 +30,10 @@ const newCompany = await CompanyRecord.create({
   companyId: "new-company-ab",
   clock: incrementingClock("2026-09-03T08:00:00.000Z"),
   initialState: {
-    core: { organization: { name: "New Company AB", organization_number: "559991-0001" } },
+    core: {
+      organization: { name: "New Company AB", organization_number: "559991-0001" },
+      policies: { bookkeeping: bookkeepingCorePolicy() },
+    },
     domains: {},
   },
 });
@@ -48,13 +51,16 @@ const company = await CompanyRecord.create({
   companyId: "operating-company-ab",
   clock: incrementingClock("2026-09-03T09:00:00.000Z"),
   initialState: {
-    core: { organization: { name: "Operating Company AB", organization_number: "559991-0002" } },
+    core: {
+      organization: { name: "Operating Company AB", organization_number: "559991-0002" },
+      policies: { bookkeeping: bookkeepingCorePolicy() },
+    },
     domains: {},
   },
 });
 const importedState = await bookPeriod({
   record: company,
-  period: { id: "Import", kind: "import", end: "2026-01-31" },
+  period: { id: "Import", kind: "import", end: "2026-03-31" },
   input: bookkeepingInput("operating-company-ab", "Import", {
     mode: "import",
     imported_balances: [
@@ -68,12 +74,12 @@ const importedState = await bookPeriod({
 });
 const ordinaryMonth = await bookPeriod({
   record: company,
-  period: period("2026-02"),
-  input: bookkeepingInput("operating-company-ab", "2026-02", {
+  period: period("2026-04"),
+  input: bookkeepingInput("operating-company-ab", "2026-04", {
     mode: "ordinary",
     transactions: [{
       source_id: "materials-1",
-      date: "2026-02-12",
+      date: "2026-04-12",
       description: "Materials paid from bank",
       lines: [
         { account: "4000", account_name: "Purchases", debit: "250.00 SEK", credit: "0.00 SEK" },
@@ -85,12 +91,12 @@ const ordinaryMonth = await bookPeriod({
   label: "ordinary-month",
 });
 
-const march = period("2026-03");
+const payrollMonth = period("2026-05");
 const payrollInput = {
   schema_version: "2.0",
   rules_profile: "simple-payroll-demo-v1",
-  period_id: march.id,
-  payment_date: "2026-03-25",
+  period_id: payrollMonth.id,
+  payment_date: "2026-05-25",
   employee: {
     employee_id: "employee-1",
     name: "Kim Example",
@@ -102,8 +108,8 @@ const payrollInput = {
     { type: "ordinary_absence", description: "One unpaid absence day", days: 1 },
   ],
 };
-const payrollAssignment = await assignJson(company, march, "payroll-input.json", "payroll-input", payrollInput);
-const payrollCase = await company.prepare("payroll", march.id, {
+const payrollAssignment = await assignJson(company, payrollMonth, "payroll-input.json", "payroll-input", payrollInput);
+const payrollCase = await company.prepare("payroll", payrollMonth.id, {
   expectedDocsetHead: payrollAssignment.docset.ref,
   actor: { id: "payroll-worker", role: "worker" },
   effective_policies: payrollPolicies(),
@@ -116,16 +122,16 @@ if (!payrollApproval.upstream_result) throw new Error("Approved Payroll did not 
 
 const bookkeepingAssignment = await assignJson(
   company,
-  march,
+  payrollMonth,
   "bookkeeping-input.json",
   "bookkeeping-input",
-  bookkeepingInput("operating-company-ab", march.id, {
+  bookkeepingInput("operating-company-ab", payrollMonth.id, {
     mode: "ordinary",
     payroll_postings: [payrollPosting(payrollApproval.upstream_result.payload.output)],
     reconciliations: [{ account: "1930", external_closing_balance: "9750.00 SEK" }],
   }),
 );
-const payrollBookkeepingCase = await company.prepare("bookkeeping", march.id, {
+const payrollBookkeepingCase = await company.prepare("bookkeeping", payrollMonth.id, {
   expectedDocsetHead: bookkeepingAssignment.docset.ref,
   upstreamRefs: [payrollApproval.upstream_result.ref],
   actor: { id: "bookkeeping-worker", role: "worker" },
@@ -139,8 +145,8 @@ const payrollBookkeepingApproval = await company.approve(
   approvalDecision("bookkeeping-approver"),
 );
 
-const bookkeepingArtifacts = Artifacts.render(payrollBookkeepingApproval.output_snapshot, "sie4-v1");
-const payrollArtifacts = Artifacts.render(payrollApproval.output_snapshot, "payslips-pdf-v1");
+const bookkeepingArtifacts = await Artifacts.render(payrollBookkeepingApproval.output_snapshot, "sie4-v1");
+const payrollArtifacts = await Artifacts.render(payrollApproval.output_snapshot, "payslips-pdf-v1");
 await writeArtifacts(path.join(outputRoot, "artifacts", "bookkeeping"), bookkeepingArtifacts);
 await writeArtifacts(path.join(outputRoot, "artifacts", "payroll"), payrollArtifacts);
 
@@ -148,6 +154,7 @@ const labCase = await loadCaseDirectory(path.join(
   here,
   "..",
   "..",
+  "modules",
   "evaluation-lab",
   "cases",
   "evaluation-equivalent",
@@ -278,7 +285,7 @@ async function assignJson(record, periodValue, filename, role, value) {
 function bookkeepingInput(companyId, periodId, overrides) {
   return {
     schema_id: "se.bergbok.bookkeeping-input",
-    schema_version: "2.0",
+    schema_version: "3.0",
     company_id: companyId,
     period_id: periodId,
     mode: "ordinary",
@@ -301,6 +308,19 @@ function bookkeepingPolicies() {
     bookkeeping: {
       profile: "se-private-ab-invoice-calendar-demo-v1",
       verification_series: "A",
+      ...bookkeepingCorePolicy(),
+    },
+  };
+}
+
+function bookkeepingCorePolicy() {
+  return {
+    chart_of_accounts: "BAS",
+    vat_reporting: {
+      frequency: "quarterly",
+      input_accounts: ["2641"],
+      output_accounts: ["2611"],
+      settlement_account: "2650",
     },
   };
 }
@@ -375,9 +395,13 @@ async function writeFlow(root, flow) {
   await writeFile(path.join(directory, "result", "case.json"), prettyCanonicalJson(flow.caseBundle));
   await writeFile(path.join(directory, "result", "outcome.json"), prettyCanonicalJson(flow.outcome));
   await writeFile(path.join(directory, "result", "approval.json"), prettyCanonicalJson(flow.approval.receipt));
-  const moduleReport = flow.outcome.review?.report_markdown
-    ?? `# ${flow.label}\n\nOutcome: **${flow.outcome.kind}**\n\nProposal digest: \`${flow.run.payload.proposal_digest}\`\n`;
-  await writeFile(path.join(directory, "report.md"), `${moduleReport.trimEnd()}\n`);
+  if (flow.outcome.domain === "bookkeeping") {
+    for (const profile of ["review-source-json-v1", "review-html-v1", "review-pdf-v1"]) {
+      const bundle = await Artifacts.render(flow.approval.output_snapshot, profile);
+      const artifact = bundle.payload.artifacts[0];
+      await writeFile(path.join(directory, artifact.filename), Buffer.from(artifact.content_base64, "base64"));
+    }
+  }
 }
 
 async function writeArtifacts(directory, bundle) {

@@ -1,16 +1,8 @@
 {
-  "fixture": "artifacts.test.mjs outputs",
-  "profile_version": "1",
-  "approved": {
-    "review-markdown-v1": "da6e2422aa7ac0017f739ac33f4aacd4e6192d848eae94e6c0fdfee2661f6d48",
-    "sie4-v1": "3c63a342b68a6766151be42a1f0f5c1094e6a97a8e95e8105742cb4b9cc6772c",
-    "vat-verification-pdf-v1": "f086640ad500d0abcf6bc8e8ea0d5e3c7516801246e3b069d7451eb8572f000a",
-    "vat-xml-v1": "1bae21dd1ad5eb5eae4341450b180e3eeb48a30362c4166d0643d9db619415cb"
-  },
-  "preliminary": {
-    "review-markdown-v1": "1cf7871d54e98c6a01d772ab87b47ba3fe30d542197ff0c3131adc7227bed2e7",
-    "sie4-v1": "f640e5979887b82abe1441c9cd5aabaf12cfbcf44547ddf2fbbc6b965696fa77",
-    "vat-verification-pdf-v1": "4fbbb40e57bc0fc83bad01e3738368842ef8fa378903ce97480e683c81fd83a2",
-    "vat-xml-v1": "daa59a355fe2e87ec713b8313b7085b4874bb7021a59bb5713402918166232fa"
+  "snapshot": "76c0889aecaa42b44fe7fa07af3a35aadb0c4ffe7ae6471e93c46ff17a2a4d51",
+  "artifacts": {
+    "review-source-json-v1": "b0ad2de7eecde3e904c642a71fae0eefd1dc6b4a47005a7784fc3af7a993394b",
+    "review-html-v1": "38805299ae36b607d14902d5610670e052f66244a58cb9cc6ebf9f662830a965",
+    "review-pdf-v1": "880f9c614d12dee04165dace890674ccfec6d930377d2232a5b9e9ddc6aa103e"
   }
 }

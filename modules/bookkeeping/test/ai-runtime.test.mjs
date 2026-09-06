@@ -8,6 +8,7 @@ import { createStateEnvelope, sealContent } from "../../../contracts/src/index.m
 import { runAgent } from "../src/private/ai/agent.mjs";
 import { parseCandidate, validateCandidate } from "../src/private/ai/candidate.mjs";
 import { startWorkspace } from "../src/private/ai/docker.mjs";
+import { MAX_RUN_MS, MAX_STEPS } from "../src/private/ai/constants.mjs";
 
 function caseBundle() {
   const previous = createStateEnvelope({ companyId: "example-ab", sequence: 0, core: {}, domains: {} });
@@ -28,7 +29,25 @@ function caseBundle() {
       period: { id: "Start", kind: "start", end: "2025-12-31" },
       docset,
       previous_state: previous,
-      effective_policies: {},
+      effective_policies: {
+        core: {
+          country: "SE",
+          currency: "SEK",
+          fiscal_year: { start: "2025-01-01", end: "2025-12-31" },
+          accounting_method: "invoice",
+        },
+        bookkeeping: {
+          profile: "se-private-ab-invoice-calendar-demo-v1",
+          verification_series: "A",
+          chart_of_accounts: "BAS",
+          vat_reporting: {
+            frequency: "quarterly",
+            input_accounts: ["2641"],
+            output_accounts: ["2611"],
+            settlement_account: "2650",
+          },
+        },
+      },
       upstream_results: [],
     },
   });
@@ -37,25 +56,53 @@ function caseBundle() {
 function candidate() {
   return {
     schema_id: "se.bergbok.bookkeeping-ai-candidate",
-    schema_version: "2.0",
+    schema_version: "4.0",
     status: "proposal",
-    core: { organization: { name: "Example AB", organization_number: "559999-9999" }, registrations: {}, address: {}, evidence_document_ids: ["D1"] },
+    core: {
+      organization: { name: "Example AB", organization_number: "559999-9999" },
+      registrations: {},
+      address: {},
+      policies: {
+        bookkeeping: {
+          chart_of_accounts: "BAS",
+          vat_reporting: {
+            frequency: "quarterly",
+            input_accounts: ["2641"],
+            output_accounts: ["2611"],
+            settlement_account: "2650",
+          },
+        },
+      },
+      evidence_document_ids: ["D1"],
+    },
     bookkeeping_input: {
       schema_id: "se.bergbok.bookkeeping-input",
-      schema_version: "2.0",
+      schema_version: "3.0",
       company_id: "example-ab",
       period_id: "Start",
       mode: "start",
       transactions: [], open_item_changes: [], reconciliations: [], vat: { status: "not_due" },
     },
+    review: { summary: "No transactions are needed for Start.", transaction_summaries: [] },
     questions: [], warnings: [], reasons: [],
   };
 }
+
+test("AI runtime permits the configured assessment budget", () => {
+  assert.equal(MAX_STEPS, 100);
+  assert.equal(MAX_RUN_MS, 60 * 60_000);
+});
 
 test("AI candidate parser rejects malformed or untyped output", () => {
   assert.equal(parseCandidate("not json").ok, false);
   assert.equal(parseCandidate(JSON.stringify({ schema_id: "wrong" })).ok, false);
   assert.equal(parseCandidate(JSON.stringify(candidate())).ok, true);
+  const multiline = candidate();
+  multiline.review.transaction_summaries = [{ source_id: "T1", summary: "two\nlines" }];
+  assert.equal(parseCandidate(JSON.stringify(multiline)).ok, false);
+  const obsolete = candidate();
+  obsolete.schema_version = "2.0";
+  assert.equal(parseCandidate(JSON.stringify(obsolete)).ok, false);
 });
 
 test("AI candidate mode must match the fixed Period kind", () => {
@@ -69,6 +116,30 @@ test("AI candidate mode must match the fixed Period kind", () => {
   });
   assert.equal(result.ok, false);
   assert.match(result.errors[0], /must be start/);
+});
+
+test("initial AI candidate must propose the evidence-backed fixed VAT policy", () => {
+  const missing = candidate();
+  delete missing.core.policies;
+  const missingResult = validateCandidate({
+    source: JSON.stringify(missing),
+    caseBundle: caseBundle(),
+    evaluate: () => { throw new Error("missing policy must stop before evaluation"); },
+    provenance: {},
+  });
+  assert.equal(missingResult.ok, false);
+  assert.match(missingResult.errors[0], /BAS chart of accounts/);
+
+  const wrong = candidate();
+  wrong.core.policies.bookkeeping.vat_reporting.settlement_account = "2660";
+  const wrongResult = validateCandidate({
+    source: JSON.stringify(wrong),
+    caseBundle: caseBundle(),
+    evaluate: () => { throw new Error("wrong policy must stop before evaluation"); },
+    provenance: {},
+  });
+  assert.equal(wrongResult.ok, false);
+  assert.match(wrongResult.errors[0], /controller-owned onboarding policy/);
 });
 
 test("agent dispatches custom tools, replays call IDs, disables storage, and stops on validation", async () => {

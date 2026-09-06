@@ -41,7 +41,7 @@ export async function materializeChatSnapshot(database = getDatabase()) {
   };
   const runRows = database
     .prepare(
-      "SELECT id,period_id,outcome_kind,run_sha256,outcome_json,decision,superseded_at FROM bookkeeping_runs WHERE company_id=? ORDER BY created_at,id",
+      "SELECT id,period_id,outcome_kind,run_sha256,run_ref_json,decision,superseded_at FROM bookkeeping_runs WHERE company_id=? ORDER BY created_at,id",
     )
     .all(COMPANY_ID) as Array<Record<string, unknown>>;
   const record = await companyRecord();
@@ -50,9 +50,9 @@ export async function materializeChatSnapshot(database = getDatabase()) {
   const identity = JSON.stringify({
     summary: snapshotSummary,
     uploads: uploadRows,
-    runs: runRows.map(({ outcome_json, ...row }) => ({
+    runs: runRows.map(({ run_ref_json, ...row }) => ({
       ...row,
-      outcome_sha256: createHash("sha256").update(String(outcome_json)).digest("hex"),
+      run_ref: JSON.parse(String(run_ref_json)),
     })),
   });
   const snapshotId = createHash("sha256").update(identity).digest("hex");
@@ -95,9 +95,13 @@ export async function materializeChatSnapshot(database = getDatabase()) {
     });
   }
   for (const run of runRows) {
+    const outputSnapshot = await record.read({
+      kind: "output_snapshot",
+      runRef: JSON.parse(String(run.run_ref_json)),
+    });
     await writeFile(
       path.join(root, "runs", `${String(run.id)}.json`),
-      `${String(run.outcome_json)}\n`,
+      `${JSON.stringify(outputSnapshot, null, 2)}\n`,
       { mode: 0o444 },
     );
   }

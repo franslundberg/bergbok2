@@ -11,14 +11,21 @@ import {
   removePeriodDocument,
   replaceTextDocument,
   requestProposalChanges,
+  COMPANY_ID,
 } from "./application.ts";
-import type { WorkbenchTarget } from "./types.ts";
+import type { WorkContext } from "./types.ts";
+import {
+  artifactsContext,
+  documentContext,
+  documentsContext,
+  reviewContext,
+} from "./work-context.ts";
 
 type Input = Record<string, unknown>;
 type ToolResult = {
   ok: true;
   message: string;
-  workbench?: WorkbenchTarget;
+  workContext?: WorkContext;
   data?: unknown;
 };
 
@@ -37,10 +44,10 @@ const stringProperty = (description: string, maxLength = 180) => ({
   description,
 });
 
-const result = (message: string, workbench?: WorkbenchTarget, data?: unknown): ToolResult => ({
+const result = (message: string, workContext?: WorkContext, data?: unknown): ToolResult => ({
   ok: true,
   message,
-  ...(workbench ? { workbench } : {}),
+  ...(workContext ? { workContext } : {}),
   ...(data === undefined ? {} : { data }),
 });
 
@@ -94,11 +101,11 @@ export const approvedBookkeepingThrough = (
   return latest ? { period_id: latest.id, end: latest.end } : null;
 };
 
-export async function resolveToolPeriod(requested: unknown, uiContext: WorkbenchTarget | null) {
+export async function resolveToolPeriod(requested: unknown, workContext: WorkContext | null) {
   const summary = await companySummary();
   const id =
     (typeof requested === "string" && requested) ||
-    uiContext?.periodId ||
+    workContext?.periodId ||
     summary.activePeriodId ||
     summary.periods.at(-1)?.id;
   if (!id || !summary.periods.some((period) => period.id === id))
@@ -106,22 +113,22 @@ export async function resolveToolPeriod(requested: unknown, uiContext: Workbench
   return id;
 }
 
-export async function buildChatApplicationContext(uiContext: WorkbenchTarget | null) {
+export async function buildChatApplicationContext(workContext: WorkContext | null) {
   const summary = await companySummary();
   const selectedPeriodId =
-    uiContext?.periodId ?? summary.activePeriodId ?? summary.periods.at(-1)?.id ?? null;
+    workContext?.periodId ?? summary.activePeriodId ?? summary.periods.at(-1)?.id ?? null;
   const detail = selectedPeriodId ? await periodDetail(selectedPeriodId) : null;
   const latestApproved = approvedBookkeepingThrough(summary.periods);
   return JSON.stringify({
-    selected_workbench: uiContext,
+    work_context: workContext,
     active_period_id: summary.activePeriodId,
     approved_bookkeeping_through: latestApproved,
-    periods: summary.periods.map(({ id, status, end, uploadCount, proposal }) => ({
+    periods: summary.periods.map(({ id, status, end, uploadCount, review }) => ({
       id,
       status,
       end,
       document_count: uploadCount,
-      proposal: proposal ? { id: proposal.id, sha256: proposal.sha256 } : null,
+      review: review ? { id: review.id, sha256: review.sha256, kind: review.kind } : null,
     })),
     selected_period_documents:
       detail?.documents.map(({ id, filename, mediaType, origin, parentDocumentId }) => ({
@@ -142,9 +149,10 @@ export async function buildChatApplicationContext(uiContext: WorkbenchTarget | n
 
 export function createApplicationTools(
   session: AuthenticatedSession,
-  uiContext: WorkbenchTarget | null,
+  workContext: WorkContext | null,
 ): ToolSet {
-  const period = (value: unknown) => resolveToolPeriod(value, uiContext);
+  const period = (value: unknown) => resolveToolPeriod(value, workContext);
+  const context = (periodId: string) => documentsContext(COMPANY_ID, periodId);
   return {
     show_period: tool({
       description: "Visa en periods underlag i arbetsytan till höger.",
@@ -152,7 +160,7 @@ export function createApplicationTools(
       execute: async (input) => {
         const periodId = await period(input.periodId);
         await periodDetail(periodId);
-        return result(`Visar underlag för ${periodId}.`, { kind: "period", periodId });
+        return result(`Visar underlag för ${periodId}.`, context(periodId));
       },
     }),
     list_documents: tool({
@@ -163,10 +171,7 @@ export function createApplicationTools(
         const detail = await periodDetail(periodId);
         return result(
           `Visar ${detail.documents.length} dokument för ${periodId}.`,
-          {
-            kind: "period",
-            periodId,
-          },
+          context(periodId),
           detail.documents.map(({ id, filename, mediaType, origin }) => ({
             id,
             filename,
@@ -189,11 +194,10 @@ export function createApplicationTools(
         const periodId = await period(input.periodId);
         const documentId = String(input.documentId);
         const document = await documentDetail(periodId, documentId);
-        return result(`Visar ${document.filename}.`, {
-          kind: "document",
-          periodId,
-          documentId,
-        });
+        return result(
+          `Visar ${document.filename}.`,
+          documentContext(COMPANY_ID, periodId, documentId),
+        );
       },
     }),
     show_proposal: tool({
@@ -202,9 +206,14 @@ export function createApplicationTools(
       execute: async (input) => {
         const periodId = await period(input.periodId);
         const detail = await periodDetail(periodId);
-        if (!detail.period.proposal)
-          throw Object.assign(new Error("Perioden har inget aktuellt förslag."), { status: 409 });
-        return result(`Visar förslaget för ${periodId}.`, { kind: "proposal", periodId });
+        if (!detail.period.review)
+          throw Object.assign(new Error("Perioden har inget aktuellt granskningsresultat."), {
+            status: 409,
+          });
+        return result(
+          `Visar granskningen för ${periodId}.`,
+          reviewContext(COMPANY_ID, periodId, detail.period.review.id),
+        );
       },
     }),
     show_artifacts: tool({
@@ -213,7 +222,7 @@ export function createApplicationTools(
       execute: async (input) => {
         const periodId = await period(input.periodId);
         await periodDetail(periodId);
-        return result(`Visar filer för ${periodId}.`, { kind: "artifacts", periodId });
+        return result(`Visar filer för ${periodId}.`, artifactsContext(COMPANY_ID, periodId));
       },
     }),
     prepare_upload: tool({
@@ -226,10 +235,7 @@ export function createApplicationTools(
           throw Object.assign(new Error("Perioden kan inte ta emot nya underlag."), {
             status: 409,
           });
-        return result(`Uppladdningsytan för ${periodId} är öppen.`, {
-          kind: "period",
-          periodId,
-        });
+        return result(`Uppladdningsytan för ${periodId} är öppen.`, context(periodId));
       },
     }),
     create_text_document: tool({
@@ -250,11 +256,10 @@ export function createApplicationTools(
           String(input.filename),
           String(input.markdown),
         );
-        return result(`Textunderlaget ${created.filename} har lagts till i ${periodId}.`, {
-          kind: "document",
-          periodId,
-          documentId: String(created.documentId),
-        });
+        return result(
+          `Textunderlaget ${created.filename} har lagts till i ${periodId}.`,
+          documentContext(COMPANY_ID, periodId, String(created.documentId)),
+        );
       },
     }),
     add_document_note: tool({
@@ -275,11 +280,10 @@ export function createApplicationTools(
           String(input.documentId),
           String(input.markdown),
         );
-        return result("Anteckningen har lagts till.", {
-          kind: "document",
-          periodId,
-          documentId: String(created.documentId),
-        });
+        return result(
+          "Anteckningen har lagts till.",
+          documentContext(COMPANY_ID, periodId, String(created.documentId)),
+        );
       },
     }),
     replace_text_document: tool({
@@ -300,11 +304,10 @@ export function createApplicationTools(
           String(input.documentId),
           String(input.markdown),
         );
-        return result("Textunderlaget har fått en ny version.", {
-          kind: "document",
-          periodId,
-          documentId: replaced.documentId,
-        });
+        return result(
+          "Textunderlaget har fått en ny version.",
+          documentContext(COMPANY_ID, periodId, replaced.documentId),
+        );
       },
     }),
     remove_document: tool({
@@ -320,10 +323,10 @@ export function createApplicationTools(
       execute: async (input) => {
         const periodId = await period(input.periodId);
         await removePeriodDocument(session, periodId, String(input.documentId));
-        return result("Dokumentet har tagits bort från periodens aktuella underlag.", {
-          kind: "period",
-          periodId,
-        });
+        return result(
+          "Dokumentet har tagits bort från periodens aktuella underlag.",
+          context(periodId),
+        );
       },
     }),
     keep_duplicate: tool({
@@ -341,11 +344,10 @@ export function createApplicationTools(
           undefined,
           periodId,
         );
-        return result("Dubbletten har behållits och lagts till.", {
-          kind: "document",
-          periodId,
-          documentId: String(assigned.documentId),
-        });
+        return result(
+          "Dubbletten har behållits och lagts till.",
+          documentContext(COMPANY_ID, periodId, String(assigned.documentId)),
+        );
       },
     }),
     ignore_upload: tool({
@@ -354,7 +356,7 @@ export function createApplicationTools(
       execute: async (input) => {
         await assignUpload(session, String(input.uploadId), "ignore");
         const periodId = await period(undefined);
-        return result("Uppladdningen används inte.", { kind: "period", periodId });
+        return result("Uppladdningen används inte.", context(periodId));
       },
     }),
     start_bookkeeping: tool({
@@ -363,10 +365,7 @@ export function createApplicationTools(
       execute: async (input) => {
         const periodId = await period(input.periodId);
         enqueueRun(session, periodId);
-        return result(`Bokföringen för ${periodId} har startats.`, {
-          kind: "period",
-          periodId,
-        });
+        return result(`Bokföringen för ${periodId} har startats.`, context(periodId));
       },
     }),
     request_changes: tool({
@@ -381,7 +380,7 @@ export function createApplicationTools(
       execute: async (input) => {
         const periodId = await period(input.periodId);
         await requestProposalChanges(session, periodId, String(input.note));
-        return result(`Ändringen har begärts för ${periodId}.`, { kind: "period", periodId });
+        return result(`Ändringen har begärts för ${periodId}.`, context(periodId));
       },
     }),
   };

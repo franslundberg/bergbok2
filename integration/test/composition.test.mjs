@@ -17,16 +17,19 @@ test("the public modules compose through an approved Payroll-to-Bookkeeping hand
     language: "en",
     clock: fixedClock,
     initialState: {
-      core: { organization: { name: "Composition AB", organization_number: "559992-0001" } },
+      core: {
+        organization: { name: "Composition AB", organization_number: "559992-0001" },
+        policies: { bookkeeping: bookkeepingCorePolicy() },
+      },
       domains: {
         bookkeeping: {
           contract_version: "1.0",
           status: "approved",
           schema_id: "se.bergbok.bookkeeping.state",
-          schema_version: "2.0",
+          schema_version: "3.0",
           company_id: "composition-ab",
-          through_period_id: "2026-02",
-          through_date: "2026-02-28",
+          through_period_id: "2026-04",
+          through_date: "2026-04-30",
           currency: "SEK",
           ledger: {
             balances: [
@@ -36,18 +39,18 @@ test("the public modules compose through an approved Payroll-to-Bookkeeping hand
             verification_series: { series: "A", last_number: 7 },
           },
           open_items: { items: [], totals: { count: 0, by_kind: {} } },
-          reconciliation: { period_id: "2026-02", accounts: [] },
-          vat: { status: "not_due", reporting_period_start: null, reporting_period_end: null, declaration_boxes: null },
+          reconciliation: { period_id: "2026-04", accounts: [] },
+          vat: vatNotDue("2026-04-01", "2026-06-30"),
         },
       },
     },
   });
-  const period = { id: "2026-03", kind: "ordinary", start: "2026-03-01", end: "2026-03-31" };
+  const period = { id: "2026-05", kind: "ordinary", start: "2026-05-01", end: "2026-05-31" };
   const payrollInput = {
     schema_version: "2.0",
     rules_profile: "simple-payroll-demo-v1",
     period_id: period.id,
-    payment_date: "2026-03-25",
+    payment_date: "2026-05-25",
     employee: {
       employee_id: "employee-1",
       name: "Kim Example",
@@ -81,7 +84,7 @@ test("the public modules compose through an approved Payroll-to-Bookkeeping hand
 
   const bookkeepingInput = {
     schema_id: "se.bergbok.bookkeeping-input",
-    schema_version: "2.0",
+    schema_version: "3.0",
     company_id: "composition-ab",
     period_id: period.id,
     mode: "ordinary",
@@ -111,6 +114,7 @@ test("the public modules compose through an approved Payroll-to-Bookkeeping hand
       bookkeeping: {
         profile: "se-private-ab-invoice-calendar-demo-v1",
         verification_series: "A",
+        ...bookkeepingCorePolicy(),
       },
     },
   });
@@ -122,13 +126,16 @@ test("the public modules compose through an approved Payroll-to-Bookkeeping hand
   const bookkeepingRun = await company.record(bookkeepingCase.ref, bookkeepingOutcome);
   const bookkeepingApproval = await company.approve(bookkeepingRun.ref, approval("bookkeeping-approver"));
 
-  const artifactBundle = Artifacts.render(bookkeepingApproval.output_snapshot, "sie4-v1");
+  const artifactBundle = await Artifacts.render(bookkeepingApproval.output_snapshot, "sie4-v1");
   assert.equal(artifactBundle.payload.preview, false);
-  assert.match(Buffer.from(artifactBundle.payload.artifacts[0].content_base64, "base64").toString("utf8"), /Payroll 2026-03/);
-  const reviewBundle = Artifacts.render(bookkeepingApproval.output_snapshot, "review-markdown-v1");
+  assert.match(Buffer.from(artifactBundle.payload.artifacts[0].content_base64, "base64").toString("utf8"), /Payroll 2026-05/);
+  const reviewBundle = await Artifacts.render(bookkeepingApproval.output_snapshot, "review-html-v1");
   assert.equal(reviewBundle.payload.language, "en");
-  assert.match(Buffer.from(reviewBundle.payload.artifacts[0].content_base64, "base64").toString("utf8"), /^# Bergbok review package/m);
-  const payslipBundle = Artifacts.render(payrollApproval.output_snapshot, "payslips-pdf-v1");
+  const reviewHtml = Buffer.from(reviewBundle.payload.artifacts[0].content_base64, "base64").toString("utf8");
+  assert.match(reviewHtml, /<h1>Bookkeeping review/);
+  assert.match(reviewHtml, /Payroll 2026-05/);
+  assert.match(reviewHtml, /7010/);
+  const payslipBundle = await Artifacts.render(payrollApproval.output_snapshot, "payslips-pdf-v1");
   assert.equal(payslipBundle.payload.language, "en");
   assert.match(Buffer.from(payslipBundle.payload.artifacts[0].content_base64, "base64").toString("latin1"), /Gross pay/);
   const finalState = await company.read({ kind: "state" });
@@ -167,13 +174,40 @@ function payrollPosting(facts) {
   };
   return {
     payroll_facts_ref: facts.ref,
-    date: "2026-03-25",
-    description: "Payroll 2026-03 - Kim Example",
+    date: "2026-05-25",
+    description: "Payroll 2026-05 - Kim Example",
     assignments: [...facts.payload.expense_facts, ...facts.payload.liability_facts].map((fact) => ({
       fact_id: fact.fact_id,
       account: accounts[fact.kind][0],
       account_name: accounts[fact.kind][1],
     })),
+  };
+}
+
+function bookkeepingCorePolicy() {
+  return {
+    chart_of_accounts: "BAS",
+    vat_reporting: {
+      frequency: "quarterly",
+      input_accounts: ["2641"],
+      output_accounts: ["2611"],
+      settlement_account: "2650",
+    },
+  };
+}
+
+function vatNotDue(cycleStart, cycleEnd) {
+  return {
+    frequency: "quarterly",
+    cycle_start: cycleStart,
+    cycle_end: cycleEnd,
+    due_in_period: false,
+    input_accounts: ["2641"],
+    output_accounts: ["2611"],
+    settlement_account: "2650",
+    status: "not_due",
+    closing_transaction_source_id: null,
+    declaration_boxes: {},
   };
 }
 

@@ -8,10 +8,12 @@ The schemas validate shape, not authority. SHA-256 recomputation, freshness,
 authorization, predecessor selection, and atomic publication are enforced by
 Company Record.
 
-The initial portable set is `ContentRef`, `ConsolidationCase`, `ModuleOutcome`,
-`StateEnvelope`, `ApprovalReceipt`, and `ArtifactBundle`. Only these outer
-envelopes are being stabilized. Bookkeeping State, Payroll State, and each
-canonical output retain their own schema IDs and versions.
+The portable set is `ContentRef`, `ConsolidationCase`, `ModuleOutcome`,
+`StateEnvelope`, `ApprovalReceipt`, `OutputSnapshot`, and `ArtifactBundle`.
+`OutputSnapshot` v2 is the complete approval-bound source for review rendering;
+it contains the complete ModuleOutcome and exact input-context references, not
+duplicated review or canonical-output projections. Bookkeeping State, Payroll
+State, and each canonical output retain their own schema IDs and versions.
 
 The JSON Schemas are in this directory. `src/` contains the current JavaScript
 reference implementation of sealing, hashing, canonical JSON, and runtime

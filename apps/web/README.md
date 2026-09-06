@@ -11,7 +11,8 @@ Requirements: Node.js 22+, Docker Desktop, an OpenAI API key, and SMTP settings
 compatible with the Demo 5 authentication flow.
 
 1. Copy `.env.example` to `.env.local` and fill every secret/path value.
-2. From this directory run `npm install` and `npm run setup:manager`.
+2. Run `npm install` once at the repository root, then from this directory run
+   `npm install` and `npm run setup:manager`.
 3. Build the read-only chat image with `npm run setup:chat-image`.
 4. From the repository root build Bookkeeping's existing images with
    `npm run demo:bookkeeping -- setup`.
@@ -19,10 +20,13 @@ compatible with the Demo 5 authentication flow.
    `npm run dev`.
 6. Open `http://127.0.0.1:3006`.
 
-After login, the left column selects a period, the middle column is the
-conversation, and the right column shows the selected period's Underlag. Drop
-files in the right column to assign them directly to the open period. The same
-work can be driven from the conversation, for example:
+After login, the left column remains the company and status anchor. A shared
+context bar spans the conversation and workbench: it shows Bokföring, the
+selected period, its status, and the current activity. Selecting a period in
+either the left column or the bar changes the same WorkContext and opens that
+period's Underlag in the workbench. Drop files in the workbench, or use the
+composer upload button, to assign them to the selected period. The same work
+can be driven from the conversation, for example:
 
 - `Visa underlagen för Start`
 - `Lägg till en anteckning till bolaget-fiktiv.md: ...`
@@ -30,8 +34,20 @@ work can be driven from the conversation, for example:
 - `Bokför Start`
 
 Viewing, editing, removal, bookkeeping and change requests can be requested in
-chat. Approving a proposal always requires the explicit `Godkänn` button in the
-right-hand workbench.
+chat. The first WorkContext version is bookkeeping-only: `documents`, `review`,
+and `artifacts`. The text editor remains local workbench state. The selected
+context is kept per browser tab in `sessionStorage`; old chat messages remain
+readable without fabricated context metadata. Every completed Bookkeeping outcome has one review report, shown as
+sandboxed standalone HTML. It covers proposals, questions, and out-of-scope
+results; transactions can be expanded for exact account, debit, and credit
+details. The same immutable snapshot can be downloaded as canonical JSON or a
+fully expanded PDF. Approving a proposal always requires the explicit
+`Godkänn` button outside the report in the right-hand workbench.
+
+The Start assessment must extract Fiktiv AB's quarterly VAT cadence and account
+configuration from evidence. Approval stores that policy in company core
+State. May therefore shows the April–June cycle as not due, while June is due
+and must include the declaration assessment and VAT closing entry.
 
 Runtime data is stored under `../../var/` by default and is ignored. The source
 fixture under `modules/bookkeeping/demo/fixtures/fiktiv-ab/` is used only by
@@ -53,3 +69,10 @@ the default suite.
 
 The web UI polls durable jobs while assistant responses stream. A failed or
 abandoned paid-model job is never retried automatically.
+
+The authenticated endpoint
+`GET /api/runs/:id/review?format=html|pdf|json` resolves the run through Company
+Record and renders it through Artifacts. Approval persists the approved source
+JSON, HTML, PDF, and SIE bundle. The application database stores only the
+immutable run reference plus indexing and status data; it does not duplicate
+the complete outcome for presentation.

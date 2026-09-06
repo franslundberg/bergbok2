@@ -214,11 +214,20 @@ test("prepare freezes exact inputs; record and approval publish only the propose
   });
   const snapshot = await record.read({ kind: "output_snapshot", runRef: run.ref });
   assert.equal(snapshot.ref.schema_id, "se.bergbok.output-snapshot");
+  assert.equal(snapshot.ref.schema_version, "2.0");
+  assert.deepEqual(Object.keys(snapshot.payload).sort(), [
+    "approval_receipt_ref", "approval_status", "context", "contract_version", "language",
+    "outcome", "proposal_digest", "recorded_at", "run_ref",
+  ]);
   assert.equal(snapshot.payload.approval_status, "approved");
   assert.deepEqual(snapshot.payload.approval_receipt_ref, approval.receipt.ref);
-  assert.deepEqual(snapshot.payload.canonical_outputs, outcome.canonical_outputs);
+  assert.equal(snapshot.ref.schema_version, "2.0");
+  assert.equal(snapshot.payload.contract_version, "2.0");
+  assert.deepEqual(snapshot.payload.outcome, outcome);
   assert.equal(snapshot.payload.language, "sv");
-  assert.deepEqual(snapshot.payload.review, outcome.review);
+  assert.deepEqual(snapshot.payload.context.period, caseBundle.payload.period);
+  assert.deepEqual(snapshot.payload.context.docset_ref, caseBundle.payload.docset.ref);
+  assert.deepEqual(snapshot.payload.context.previous_state_ref, caseBundle.payload.previous_state.ref);
   assert.equal((await record.read({ kind: "period", period: "2026-02" })).status, "approved");
 });
 
@@ -474,6 +483,17 @@ test("the first Bookkeeping approval may initialize core State exactly once", as
     organization: { name: "Fiktiv AB", organization_number: "559999-0008" },
     enabled_modules: ["bookkeeping"],
     bookkeeping_start_date: "2026-06-01",
+    policies: {
+      bookkeeping: {
+        chart_of_accounts: "BAS",
+        vat_reporting: {
+          frequency: "quarterly",
+          input_accounts: ["2641"],
+          output_accounts: ["2611"],
+          settlement_account: "2650",
+        },
+      },
+    },
   };
   const outcome = createModuleOutcome({
     kind: "proposal",

@@ -73,11 +73,15 @@ export async function processJob(
     const record = await companyRecord();
     const docset = await record.read({ kind: "docset", period });
     if (!docset?.payload?.documents?.length) throw new Error("Periodens Docset är tomt");
+    const previousState = await record.read({ kind: "state" });
     const year = period.end.slice(0, 4);
     const caseBundle = await record.prepare("bookkeeping", period, {
       expectedDocsetHead: docset.ref,
+      expectedStateRef: previousState.ref,
       actor: { id: "bookkeeping-worker", role: "worker" },
-      effectivePolicies: effectivePoliciesForYear(year),
+      effectivePolicies: effectivePoliciesForYear(year, previousState.payload.core, {
+        onboarding: period.kind === "start",
+      }),
       context: period.kind === "start" ? { onboarding: { start_date: "2026-05-12" } } : {},
     });
     updateJobPhase(database, job, "analyzing");
@@ -88,7 +92,7 @@ export async function processJob(
     const now = Date.now();
     database
       .prepare(
-        "INSERT INTO bookkeeping_runs (id,company_id,period_id,job_id,outcome_kind,run_ref_json,run_sha256,review_markdown,outcome_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO bookkeeping_runs (id,company_id,period_id,job_id,outcome_kind,run_ref_json,run_sha256,created_at) VALUES (?,?,?,?,?,?,?,?)",
       )
       .run(
         runId,
@@ -98,8 +102,6 @@ export async function processJob(
         outcome.kind,
         JSON.stringify(stored.ref),
         stored.ref.sha256,
-        outcome.review?.report_markdown ?? null,
-        JSON.stringify(outcome),
         now,
       );
     database

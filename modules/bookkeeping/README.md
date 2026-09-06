@@ -8,18 +8,33 @@ one public operation:
 await consolidate(ConsolidationCase, variantRef?) -> ModuleOutcome
 ```
 
-Accounting calculations, input parsing, payroll-facts validation, and report
-generation are private supporting libraries under `src/private/`. Bookkeeping
-cannot approve or persist authoritative State.
+Accounting calculations, input parsing, payroll-facts validation, and review
+narrative validation are private supporting libraries under `src/private/`.
+Bookkeeping cannot approve, render reports, or persist authoritative State.
 
 Bookkeeping resolves `ConsolidationCase.payload.language` (`sv` or `en`, with
 Swedish as the legacy default), records it in `review.language`, and localizes
 module-generated review text. Source-provided names, descriptions, and quoted
 evidence remain unchanged.
 
-Version 2.0.0 emits schema-v2 domain payloads with canonical Decision 0001
-Money strings such as `"48406.36 SEK"`. A single boundary adapter still reads
-sealed schema-v1 integer-ore input and State; new output is always v2.
+Module version 4.0.0 emits schema-v3 input, output, State, and period-delta
+payloads with canonical Decision 0001 Money strings such as `"48406.36 SEK"`.
+A single boundary adapter still reads sealed schema-v1 integer-ore input and
+State. Schema-v2 Bookkeeping data has no compatibility adapter.
+
+Start establishes the company-owned bookkeeping policy from evidence. The
+current Pilot accepts BAS plus quarterly VAT reporting with explicit input,
+output, and settlement accounts. Once approved, later periods receive this
+policy from trusted company State. The kernel—not AI—derives calendar-quarter
+boundaries. Non-quarter-end periods reject declaration boxes and VAT closing
+entries; quarter-end periods require a final transaction on the cycle end that
+matches the declaration and clears configured VAT accounts to settlement.
+
+Each outcome contains a structured review with a frozen language, one
+consolidation summary, and exactly one plain-text summary for every canonical
+transaction. Proposal canonical outputs contain the complete Bookkeeping
+output and its period delta. Artifacts turns the later `OutputSnapshot` into
+the human-readable HTML and PDF; Bookkeeping does not produce Markdown.
 
 Approved upstream `PayrollAccountingFacts` contain semantic expenses and
 liabilities without BAS account numbers. The Bookkeeping assessment assigns
@@ -72,7 +87,7 @@ verification-series continuity through the day before the Bergbok Start Date:
 npm run demo:bookkeeping -- import --start-date YYYY-MM-DD --docset DIRECTORY --output WORKSPACE
 ```
 
-If a run returns `needs_input`, add an answer note or missing source to the
+If a run returns `needs_input`, open its review report, then add an answer note or missing source to the
 visible Period directory and run that Period again. A Period from the fixture
 catalog needs only its ID; a custom ordinary Period still needs explicit
 bounds. Each rerun freezes a new
@@ -82,6 +97,10 @@ Docset version; approval rejects a Proposal if the visible bytes have changed.
 default; pass `--model gpt-5.6-sol` for the stronger model or `--allow-web` to
 enable filtered public egress. The API key is read from `OPENAI_API_KEY` or the
 repository's untracked `.env.local` and is never mounted into Docker.
+The AI worker allows up to 100 model calls and 60 minutes for one assessment,
+alongside independent per-call, tool-output, and container resource limits.
 
-Use `npm run demo:bookkeeping:offline` for the old fixed, no-network example.
+Use `npm run demo:bookkeeping:offline` for the fixed, no-network example. Each
+completed Bookkeeping run writes `review-source.json`, `review.html`, and
+`review.pdf` alongside technical case and outcome diagnostics.
 See the root [module handbook](../../MODULES.md) for the full boundary.

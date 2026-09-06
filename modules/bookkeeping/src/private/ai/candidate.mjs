@@ -1,5 +1,6 @@
 import { cloneJson, sha256Json } from "../../../../../contracts/src/canonical.mjs";
-import { createModuleOutcome, normalizeLanguage } from "../../../../../contracts/src/index.mjs";
+import { createModuleOutcome } from "../../../../../contracts/src/index.mjs";
+import { classifiedReview } from "../review.mjs";
 
 const STATUS = new Set(["proposal", "needs_input", "out_of_scope"]);
 
@@ -12,13 +13,43 @@ export function parseCandidate(source) {
   }
   const errors = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) errors.push("candidate.json must contain an object");
-  if (value?.schema_id !== "se.bergbok.bookkeeping-ai-candidate" || value?.schema_version !== "2.0") {
-    errors.push("candidate.json must use se.bergbok.bookkeeping-ai-candidate 2.0");
+  if (value?.schema_id !== "se.bergbok.bookkeeping-ai-candidate" || value?.schema_version !== "4.0") {
+    errors.push("candidate.json must use se.bergbok.bookkeeping-ai-candidate 4.0");
   }
   if (!STATUS.has(value?.status)) errors.push("candidate.status must be proposal, needs_input, or out_of_scope");
   if (!Array.isArray(value?.questions)) errors.push("candidate.questions must be an array");
   if (!Array.isArray(value?.warnings)) errors.push("candidate.warnings must be an array");
   if (!Array.isArray(value?.reasons)) errors.push("candidate.reasons must be an array");
+  if (!value?.review || typeof value.review !== "object" || Array.isArray(value.review)) {
+    errors.push("candidate.review must be an object");
+  } else {
+    const reviewKeys = Object.keys(value.review).sort();
+    if (reviewKeys.length !== 2 || reviewKeys[0] !== "summary" || reviewKeys[1] !== "transaction_summaries") {
+      errors.push("candidate.review must contain exactly summary and transaction_summaries");
+    }
+    if (!validPlainText(value.review.summary, 2000, false)) {
+      errors.push("candidate.review.summary must be non-empty plain text");
+    }
+    if (!Array.isArray(value.review.transaction_summaries)) {
+      errors.push("candidate.review.transaction_summaries must be an array");
+    } else {
+      const ids = new Set();
+      for (const [index, item] of value.review.transaction_summaries.entries()) {
+        if (!item || typeof item !== "object" || Array.isArray(item)
+          || Object.keys(item).sort().join(",") !== "source_id,summary"
+          || typeof item.source_id !== "string" || !item.source_id
+          || !validPlainText(item.summary, 240, true)) {
+          errors.push(`candidate.review.transaction_summaries[${index}] is invalid`);
+          continue;
+        }
+        if (ids.has(item.source_id)) errors.push(`candidate.review has duplicate source_id ${item.source_id}`);
+        ids.add(item.source_id);
+      }
+      if (value.status !== "proposal" && value.review.transaction_summaries.length) {
+        errors.push("Non-proposal transaction_summaries must be empty");
+      }
+    }
+  }
   if (value?.status === "proposal" && (!value.bookkeeping_input || typeof value.bookkeeping_input !== "object")) {
     errors.push("A proposal must contain bookkeeping_input");
   }
@@ -26,6 +57,12 @@ export function parseCandidate(source) {
   if (value?.status === "needs_input" && value?.questions?.length === 0) errors.push("needs_input must contain a question");
   if (value?.status === "out_of_scope" && value?.reasons?.length === 0) errors.push("out_of_scope must contain a reason");
   return errors.length ? { ok: false, errors } : { ok: true, candidate: value };
+}
+
+function validPlainText(value, maxLength, singleLine) {
+  return typeof value === "string" && Boolean(value.trim()) && value.length <= maxLength
+    && !/[<>\r\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)
+    && (!singleLine || !/\n/.test(value));
 }
 
 export function validateCandidate({ source, caseBundle, evaluate, provenance }) {
@@ -62,7 +99,16 @@ export function validateCandidate({ source, caseBundle, evaluate, provenance }) 
   for (const id of candidate.core?.evidence_document_ids ?? []) {
     if (!documentIds.has(id)) return { ok: false, errors: [`Initial core cites ${id}, which is not in the fixed Docset`] };
   }
-  const outcome = evaluate({ input, core: candidate.core, provenance, assessment: candidate });
+  if (needsCore) {
+    const policyError = initialPolicyError(candidate.core?.policies?.bookkeeping, caseBundle.payload.effective_policies?.bookkeeping);
+    if (policyError) return { ok: false, errors: [policyError] };
+  }
+  let outcome;
+  try {
+    outcome = evaluate({ input, core: candidate.core, provenance, assessment: candidate });
+  } catch (error) {
+    return { ok: false, errors: [error instanceof Error ? error.message : String(error)] };
+  }
   if (outcome.kind !== "proposal") {
     return {
       ok: false,
@@ -74,25 +120,43 @@ export function validateCandidate({ source, caseBundle, evaluate, provenance }) 
   return { ok: true, classification: "proposal", candidate, outcome };
 }
 
+function initialPolicyError(candidate, fixed) {
+  if (!candidate || candidate.chart_of_accounts !== "BAS") {
+    return "Initial core must propose the BAS chart of accounts";
+  }
+  const vat = candidate.vat_reporting;
+  if (!vat || vat.frequency !== "quarterly"
+      || !Array.isArray(vat.input_accounts) || !vat.input_accounts.length
+      || !Array.isArray(vat.output_accounts) || !vat.output_accounts.length
+      || typeof vat.settlement_account !== "string") {
+    return "Initial core must propose an evidence-backed quarterly VAT policy with configured accounts";
+  }
+  return fixed?.chart_of_accounts === candidate.chart_of_accounts
+      && fixed?.vat_reporting?.frequency === vat.frequency
+      && sameStrings(fixed?.vat_reporting?.input_accounts, vat.input_accounts)
+      && sameStrings(fixed?.vat_reporting?.output_accounts, vat.output_accounts)
+      && fixed?.vat_reporting?.settlement_account === vat.settlement_account
+    ? null
+    : "Initial core VAT policy differs from the controller-owned onboarding policy";
+}
+
+function sameStrings(left, right) {
+  return Array.isArray(left) && Array.isArray(right)
+    && left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+
 export function candidateOutcome({ candidate, caseBundle, provenance }) {
-  const language = normalizeLanguage(caseBundle.payload.language ?? "sv", "ConsolidationCase.language");
   const evidence = referencedEvidence(candidate, caseBundle);
   if (candidate.status === "needs_input") {
     return createModuleOutcome({
       kind: "needs_input",
       domain: "bookkeeping",
       caseRef: caseBundle.ref,
-      canonicalOutputs: { assessment: cloneJson(candidate) },
       questions: cloneJson(candidate.questions),
       warnings: cloneJson(candidate.warnings),
       evidence,
-      review: {
-        language,
-        summary: language === "sv"
-          ? `${candidate.questions.length} fråga${candidate.questions.length === 1 ? "" : "or"} måste besvaras`
-          : `${candidate.questions.length} question${candidate.questions.length === 1 ? "" : "s"} must be answered`,
-        report_markdown: renderQuestions(candidate, caseBundle, language),
-      },
+      review: classifiedReview({ caseBundle, kind: "needs_input", count: candidate.questions.length, assessment: candidate }),
       provenance,
     });
   }
@@ -100,17 +164,10 @@ export function candidateOutcome({ candidate, caseBundle, provenance }) {
     kind: "out_of_scope",
     domain: "bookkeeping",
     caseRef: caseBundle.ref,
-    canonicalOutputs: { assessment: cloneJson(candidate) },
     warnings: cloneJson(candidate.warnings),
     evidence,
     reasons: cloneJson(candidate.reasons),
-    review: {
-      language,
-      summary: language === "sv"
-        ? "Underlaget ligger utanför den aktiverade Pilot-profilen"
-        : "The evidence is outside the activated Pilot profile",
-      report_markdown: renderReasons(candidate, caseBundle, language),
-    },
+    review: classifiedReview({ caseBundle, kind: "out_of_scope", count: candidate.reasons.length, assessment: candidate }),
     provenance,
   });
 }
@@ -129,62 +186,4 @@ function referencedEvidence(candidate, caseBundle) {
     document_id: documentId,
     docset_ref: cloneJson(caseBundle.payload.docset.ref),
   }));
-}
-
-function renderQuestions(candidate, caseBundle, language) {
-  if (language === "en") {
-    return [
-      `# Bookkeeping assessment – ${caseBundle.payload.period.id}`,
-      "",
-      "## Status",
-      "",
-      "The proposal cannot be approved yet. Add answers or supporting documents and run again.",
-      "",
-      "## Questions",
-      "",
-      ...candidate.questions.map((item) => `- **${item.code}:** ${item.prompt}`),
-      "",
-    ].join("\n");
-  }
-  return [
-    `# Bokföringsbedömning – ${caseBundle.payload.period.id}`,
-    "",
-    "## Status",
-    "",
-    "Förslaget kan inte godkännas ännu. Lägg svar eller kompletterande underlag i Documents och kör igen.",
-    "",
-    "## Frågor",
-    "",
-    ...candidate.questions.map((item) => `- **${item.code}:** ${item.prompt}`),
-    "",
-  ].join("\n");
-}
-
-function renderReasons(candidate, caseBundle, language) {
-  if (language === "en") {
-    return [
-      `# Bookkeeping assessment – ${caseBundle.payload.period.id}`,
-      "",
-      "## Status",
-      "",
-      "The evidence is outside the activated Pilot profile.",
-      "",
-      "## Reasons",
-      "",
-      ...candidate.reasons.map((item) => `- **${item.code}:** ${item.message}`),
-      "",
-    ].join("\n");
-  }
-  return [
-    `# Bokföringsbedömning – ${caseBundle.payload.period.id}`,
-    "",
-    "## Status",
-    "",
-    "Underlaget ligger utanför den aktiverade Pilot-profilen.",
-    "",
-    "## Orsaker",
-    "",
-    ...candidate.reasons.map((item) => `- **${item.code}:** ${item.message}`),
-    "",
-  ].join("\n");
 }

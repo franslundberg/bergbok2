@@ -14,18 +14,20 @@ import {
   isDirectBookkeepingCommand,
 } from "@/lib/bergbok/chat-tools";
 import { assertSameOrigin, jsonBody } from "@/lib/bergbok/http";
-import { parseWorkbenchTarget } from "@/lib/bergbok/types";
+import { parseWorkContext } from "@/lib/bergbok/types";
+import { periodDetail, companySummary } from "@/lib/bergbok/application";
+import { validateWorkContextDomain } from "@/lib/bergbok/work-context";
 
 export async function POST(request: Request) {
   assertSameOrigin(request);
-  const body = (await jsonBody(request)) as { messages?: UIMessage[]; uiContext?: unknown };
+  const body = (await jsonBody(request)) as { messages?: UIMessage[]; workContext?: unknown };
   if (!Array.isArray(body.messages) || body.messages.length > 500) {
     return Response.json({ error: "Ogiltigt meddelandeformat." }, { status: 400 });
   }
   const messages = body.messages.slice(-100);
-  let uiContext = null;
+  let workContext = null;
   try {
-    uiContext = parseWorkbenchTarget(body.uiContext);
+    workContext = parseWorkContext(body.workContext);
   } catch {
     return Response.json({ error: "Ogiltigt arbetsytesammanhang." }, { status: 400 });
   }
@@ -38,6 +40,19 @@ export async function POST(request: Request) {
     );
   }
 
+  if (session && workContext) {
+    try {
+      const summary = await companySummary();
+      const detail =
+        workContext.activity === "documents" && workContext.object
+          ? await periodDetail(workContext.periodId)
+          : undefined;
+      validateWorkContextDomain(workContext, summary, detail);
+    } catch {
+      return Response.json({ error: "Ogiltigt arbetsytesammanhang." }, { status: 400 });
+    }
+  }
+
   const lastUser = [...messages].reverse().find((message) => message.role === "user");
   const userText =
     lastUser?.parts
@@ -45,7 +60,7 @@ export async function POST(request: Request) {
       .map((part) => ("text" in part ? part.text : ""))
       .join("\n") ?? "";
   if (session && lastUser && userText)
-    appendChatMessage("user", lastUser.id, userText, session.userId);
+    appendChatMessage("user", lastUser.id, userText, session.userId, undefined, workContext);
 
   if (!process.env.OPENAI_API_KEY) {
     if (session) appendEvent("chat_failure", "bergbok-chat", { message: "OPENAI_API_KEY saknas." });
@@ -71,8 +86,8 @@ export async function POST(request: Request) {
         execute: async ({ action }) => executeWorkspaceShell(session, action),
       })
     : undefined;
-  const applicationTools = session ? createApplicationTools(session, uiContext) : undefined;
-  const applicationContext = session ? await buildChatApplicationContext(uiContext) : undefined;
+  const applicationTools = session ? createApplicationTools(session, workContext) : undefined;
+  const applicationContext = session ? await buildChatApplicationContext(workContext) : undefined;
   const tools = session
     ? { ...(shellTool ? { shell: shellTool } : {}), ...applicationTools }
     : undefined;
@@ -103,7 +118,8 @@ export async function POST(request: Request) {
         }
       : {}),
     onFinish: ({ text }) => {
-      if (session && text) appendChatMessage("assistant", randomUUID(), text, "bergbok-chat");
+      if (session && text)
+        appendChatMessage("assistant", randomUUID(), text, "bergbok-chat", undefined, workContext);
     },
   });
 

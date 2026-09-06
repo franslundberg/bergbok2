@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.bergbok.se/company-record/output-snapshot-2.0.schema.json",
+  "title": "Bergbok OutputSnapshot sealed bundle 2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ref", "payload"],
+  "properties": {
+    "ref": { "$ref": "content-ref.schema.json" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "approval_status",
+        "language",
+        "run_ref",
+        "approval_receipt_ref",
+        "proposal_digest",
+        "recorded_at",
+        "context",
+        "outcome"
+      ],
+      "properties": {
+        "contract_version": { "const": "2.0" },
+        "approval_status": { "enum": ["preliminary", "approved"] },
+        "language": { "enum": ["sv", "en"] },
+        "run_ref": { "$ref": "content-ref.schema.json" },
+        "approval_receipt_ref": {
+          "oneOf": [
+            { "$ref": "content-ref.schema.json" },
+            { "type": "null" }
+          ]
+        },
+        "proposal_digest": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "recorded_at": { "type": "string", "format": "date-time" },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["company_id", "domain", "period", "docset_ref", "previous_state_ref"],
+          "properties": {
+            "company_id": { "type": "string", "minLength": 1 },
+            "domain": { "type": "string", "minLength": 1 },
+            "period": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "kind", "end"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "kind": { "enum": ["start", "import", "ordinary"] },
+                "start": { "type": "string", "format": "date" },
+                "end": { "type": "string", "format": "date" }
+              },
+              "allOf": [
+                {
+                  "if": { "properties": { "kind": { "const": "ordinary" } } },
+                  "then": { "required": ["start"] },
+                  "else": { "not": { "required": ["start"] } }
+                }
+              ]
+            },
+            "docset_ref": { "$ref": "content-ref.schema.json" },
+            "previous_state_ref": { "$ref": "content-ref.schema.json" }
+          }
+        },
+        "outcome": { "$ref": "module-outcome.schema.json" }
+      }
+    }
+  }
+}

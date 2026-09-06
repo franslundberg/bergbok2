@@ -15,7 +15,7 @@ import { verifySealedContent } from "../../../../contracts/src/index.mjs";
 import {
   BOOKKEEPING_SCHEMA_VERSION,
   adaptBookkeepingState,
-  bookkeepingToV2,
+  bookkeepingToPortable,
 } from "./money-boundary.mjs";
 
 export const BOOKKEEPING_STATE_SCHEMA_ID = "se.bergbok.bookkeeping.state";
@@ -169,12 +169,16 @@ export function evaluateBookkeeping({
     issues.push(issue("START_RECONCILIATIONS_NOT_ALLOWED", "Start must not contain reconciliations", "bookkeeping_input.reconciliations"));
   }
   const reconciliations = calculateReconciliations(input.mode === "start" ? [] : (input.reconciliations ?? []), closingBalances, new Set(documentIds), issues, warnings);
-  if (input.mode === "start" && input.vat !== undefined && input.vat?.status !== "not_due") {
-    issues.push(issue("START_VAT_NOT_ALLOWED", "Start cannot establish VAT output", "bookkeeping_input.vat"));
-  }
-  const vatPeriod = input.mode === "start"
-    ? { status: "not_due", reporting_period_start: null, reporting_period_end: null, declaration_boxes_sek: null }
-    : calculateVat(input.vat, policy.bookkeeping.vat_reporting, bounds, issues);
+  const vatPeriod = calculateVat({
+    value: input.vat,
+    policy: policy.bookkeeping.vat_reporting,
+    bounds,
+    mode: input.mode,
+    openingBalances,
+    transactions,
+    closingBalances,
+    issues,
+  });
   const generatedDate = bounds.end ?? input.generated_date;
   if (!validIsoDate(generatedDate)) issues.push(issue("GENERATED_DATE_REQUIRED", "A valid Period end is required", "period.end"));
 
@@ -239,9 +243,9 @@ export function evaluateBookkeeping({
     issues,
     warnings,
     scopeReasons,
-    periodDelta: bookkeepingToV2(periodDelta, policy.core.currency),
-    domainState: bookkeepingToV2(domainState, policy.core.currency),
-    canonicalOutput: bookkeepingToV2(canonicalOutput, policy.core.currency),
+    periodDelta: bookkeepingToPortable(periodDelta, policy.core.currency),
+    domainState: bookkeepingToPortable(domainState, policy.core.currency),
+    canonicalOutput: bookkeepingToPortable(canonicalOutput, policy.core.currency),
   };
 }
 
@@ -455,38 +459,158 @@ function calculateReconciliations(rows, closingBalances, documentIds, issues, wa
   });
 }
 
-function calculateVat(value, policy, bounds, issues) {
-  const due = policy?.period_end === bounds.end;
-  if (value === undefined || value === null) {
-    if (due) issues.push(issue("VAT_OUTPUT_REQUIRED", "VAT details are required at the configured reporting-period end", "bookkeeping_input.vat"));
-    return { status: "not_due", reporting_period_start: null, reporting_period_end: null, declaration_boxes_sek: null };
+function calculateVat({ value, policy, bounds, mode, openingBalances, transactions, closingBalances, issues }) {
+  const cycle = quarterlyCycle(bounds, mode, issues);
+  const base = {
+    frequency: policy.frequency,
+    cycle_start: cycle.start,
+    cycle_end: cycle.end,
+    due_in_period: cycle.due,
+    input_accounts: [...policy.input_accounts],
+    output_accounts: [...policy.output_accounts],
+    settlement_account: policy.settlement_account,
+  };
+  if (value && (Object.hasOwn(value, "reporting_period_start") || Object.hasOwn(value, "reporting_period_end"))) {
+    issues.push(issue("VAT_PERIOD_DATES_DETERMINISTIC", "VAT cycle dates must not be supplied by the candidate", "bookkeeping_input.vat"));
+  }
+  if (mode === "start") {
+    if (value !== undefined && value !== null
+        && (value.status !== "not_due" || value.closing_transaction_source_id || value.declaration_boxes_sek)) {
+      issues.push(issue("START_VAT_NOT_ALLOWED", "Start cannot establish VAT output", "bookkeeping_input.vat"));
+    }
+    return { ...base, due_in_period: false, status: "not_due", closing_transaction_source_id: null, declaration_boxes_sek: {} };
   }
   if (!isPlainObject(value) || !["not_due", "due"].includes(value.status)) {
     issues.push(issue("VAT_INVALID", "vat.status must be not_due or due", "bookkeeping_input.vat"));
-    return { status: "invalid", reporting_period_start: null, reporting_period_end: null, declaration_boxes_sek: null };
+    return { ...base, status: cycle.due ? "due" : "not_due", closing_transaction_source_id: null, declaration_boxes_sek: {} };
   }
-  if (value.status === "not_due") {
-    if (due) issues.push(issue("VAT_DUE_MISMATCH", "Fixed policy says VAT is due for this period", "bookkeeping_input.vat.status"));
-    return { status: "not_due", reporting_period_start: null, reporting_period_end: null, declaration_boxes_sek: null };
+  if (!cycle.due) {
+    if (value.status !== "not_due") issues.push(issue("VAT_DUE_MISMATCH", "VAT cannot be due outside the company reporting-cycle end", "bookkeeping_input.vat.status"));
+    if (value.closing_transaction_source_id !== undefined && value.closing_transaction_source_id !== null) {
+      issues.push(issue("VAT_CLOSING_NOT_DUE", "A VAT closing transaction is not allowed before quarter end", "bookkeeping_input.vat.closing_transaction_source_id"));
+    }
+    if (value.declaration_boxes_sek !== undefined && value.declaration_boxes_sek !== null) {
+      issues.push(issue("VAT_BOXES_NOT_DUE", "VAT declaration boxes are not allowed before quarter end", "bookkeeping_input.vat.declaration_boxes"));
+    }
+    return { ...base, status: "not_due", closing_transaction_source_id: null, declaration_boxes_sek: {} };
   }
-  if (!due) issues.push(issue("VAT_DUE_MISMATCH", "VAT cannot be due outside the fixed reporting-period end", "bookkeeping_input.vat.status"));
-  if (!validIsoDate(value.reporting_period_start) || !validIsoDate(value.reporting_period_end)) {
-    issues.push(issue("VAT_PERIOD_INVALID", "VAT reporting period requires ISO start and end dates", "bookkeeping_input.vat"));
+  if (value.status !== "due") {
+    issues.push(issue("VAT_DUE_MISMATCH", "Quarterly VAT is due in this Period", "bookkeeping_input.vat.status"));
   }
-  if (policy?.period_end && value.reporting_period_end !== policy.period_end) {
-    issues.push(issue("VAT_PERIOD_MISMATCH", "VAT period end differs from fixed policy", "bookkeeping_input.vat.reporting_period_end"));
+  const boxes = normalizeVatBoxes(value.declaration_boxes_sek, issues);
+  const closingSourceId = typeof value.closing_transaction_source_id === "string" && value.closing_transaction_source_id
+    ? value.closing_transaction_source_id
+    : null;
+  if (!closingSourceId) {
+    issues.push(issue("VAT_CLOSING_REQUIRED", "Quarter-end VAT requires a referenced closing transaction", "bookkeeping_input.vat.closing_transaction_source_id"));
+  } else {
+    validateVatClosing({
+      sourceId: closingSourceId,
+      cycle,
+      policy,
+      boxes,
+      openingBalances,
+      transactions,
+      closingBalances,
+      issues,
+    });
+  }
+  return { ...base, status: "due", closing_transaction_source_id: closingSourceId, declaration_boxes_sek: boxes };
+}
+
+function quarterlyCycle(bounds, mode, issues) {
+  const containing = quarterForDate(bounds.end);
+  if (mode !== "ordinary" || !bounds.start) return { ...containing, due: false };
+  const deadlines = [];
+  for (let year = Number(bounds.start.slice(0, 4)); year <= Number(bounds.end.slice(0, 4)); year += 1) {
+    for (const suffix of ["03-31", "06-30", "09-30", "12-31"]) {
+      const date = `${year}-${suffix}`;
+      if (date >= bounds.start && date <= bounds.end) deadlines.push(date);
+    }
+  }
+  if (deadlines.length > 1) {
+    issues.push(issue("VAT_PERIOD_SPANS_MULTIPLE_DEADLINES", "A Bookkeeping Period cannot contain more than one quarterly VAT deadline", "period"));
+  }
+  return deadlines.length ? { ...quarterForDate(deadlines[0]), due: true } : { ...containing, due: false };
+}
+
+function quarterForDate(value) {
+  const year = value.slice(0, 4);
+  const month = Number(value.slice(5, 7));
+  const quarter = Math.floor((month - 1) / 3);
+  const starts = ["01-01", "04-01", "07-01", "10-01"];
+  const ends = ["03-31", "06-30", "09-30", "12-31"];
+  return { start: `${year}-${starts[quarter]}`, end: `${year}-${ends[quarter]}` };
+}
+
+function normalizeVatBoxes(value, issues) {
+  if (!isPlainObject(value)) {
+    issues.push(issue("VAT_BOXES_REQUIRED", "Quarter-end VAT declaration boxes are required", "bookkeeping_input.vat.declaration_boxes"));
   }
   const boxes = {};
   for (const box of ["10", "11", "12", "48", "49"]) {
-    const amount = value.declaration_boxes_sek?.[box] ?? 0n;
+    const amount = value?.[box] ?? 0n;
     if (typeof amount !== "bigint") issues.push(issue("VAT_BOX_INVALID", `VAT box ${box} must be whole-krona canonical Money`, `bookkeeping_input.vat.declaration_boxes.${box}`));
     boxes[box] = typeof amount === "bigint" ? amount : 0n;
   }
   const expected49 = boxes["10"] + boxes["11"] + boxes["12"] - boxes["48"];
   if (boxes["49"] !== expected49) {
-    issues.push(issue("VAT_BOX_49_MISMATCH", `VAT box 49 must equal the calculated amount`, "bookkeeping_input.vat.declaration_boxes.49"));
+    issues.push(issue("VAT_BOX_49_MISMATCH", "VAT box 49 must equal boxes 10–12 less box 48", "bookkeeping_input.vat.declaration_boxes.49"));
   }
-  return { status: "due", reporting_period_start: value.reporting_period_start, reporting_period_end: value.reporting_period_end, declaration_boxes_sek: boxes };
+  return boxes;
+}
+
+function validateVatClosing({ sourceId, cycle, policy, boxes, openingBalances, transactions, closingBalances, issues }) {
+  const index = transactions.findIndex((transaction) => transaction.source_id === sourceId);
+  if (index < 0) {
+    issues.push(issue("VAT_CLOSING_UNKNOWN", `VAT closing transaction ${sourceId} does not exist`, "bookkeeping_input.vat.closing_transaction_source_id"));
+    return;
+  }
+  const transaction = transactions[index];
+  if (index !== transactions.length - 1) issues.push(issue("VAT_CLOSING_NOT_LAST", "The VAT closing transaction must be the final transaction", "bookkeeping_input.vat.closing_transaction_source_id"));
+  if (transaction.date !== cycle.end) issues.push(issue("VAT_CLOSING_DATE_MISMATCH", `The VAT closing transaction must be dated ${cycle.end}`, "bookkeeping_input.vat.closing_transaction_source_id"));
+  const allowed = new Set([...policy.input_accounts, ...policy.output_accounts, policy.settlement_account]);
+  if (transaction.lines.some((line) => !allowed.has(line.account))) {
+    issues.push(issue("VAT_CLOSING_ACCOUNT_INVALID", "The VAT closing transaction contains an account outside the configured VAT policy", "bookkeeping_input.vat.closing_transaction_source_id"));
+  }
+  const configuredVat = new Set([...policy.input_accounts, ...policy.output_accounts]);
+  for (const row of transactions) {
+    for (const line of row.lines) {
+      if (/^(261|262|263|264)\d$/.test(line.account) && !configuredVat.has(line.account)) {
+        issues.push(issue("VAT_ACCOUNT_NOT_CONFIGURED", `VAT account ${line.account} is not configured in company policy`, "bookkeeping_input.transactions"));
+      }
+    }
+  }
+  const before = combineBalances(openingBalances, movementsFromTransactions(transactions.slice(0, index)));
+  let outputVat = 0n;
+  let inputVat = 0n;
+  for (const account of policy.output_accounts) {
+    const net = netBalanceForAccount(before, account);
+    if (net > 0n) issues.push(issue("VAT_OUTPUT_ACCOUNT_SIDE_INVALID", `Output VAT account ${account} has a debit balance before closing`, "bookkeeping_input.vat"));
+    outputVat += net < 0n ? -net : 0n;
+  }
+  for (const account of policy.input_accounts) {
+    const net = netBalanceForAccount(before, account);
+    if (net < 0n) issues.push(issue("VAT_INPUT_ACCOUNT_SIDE_INVALID", `Input VAT account ${account} has a credit balance before closing`, "bookkeeping_input.vat"));
+    inputVat += net > 0n ? net : 0n;
+  }
+  if (outputVat !== (boxes["10"] + boxes["11"] + boxes["12"]) * 100n) {
+    issues.push(issue("VAT_OUTPUT_BOXES_MISMATCH", "VAT boxes 10–12 do not match configured output VAT balances", "bookkeeping_input.vat.declaration_boxes"));
+  }
+  if (inputVat !== boxes["48"] * 100n) {
+    issues.push(issue("VAT_INPUT_BOX_MISMATCH", "VAT box 48 does not match configured input VAT balances", "bookkeeping_input.vat.declaration_boxes.48"));
+  }
+  for (const account of configuredVat) {
+    if (netBalanceForAccount(closingBalances, account) !== 0n) {
+      issues.push(issue("VAT_ACCOUNT_NOT_CLOSED", `VAT account ${account} is not zero after closing`, "bookkeeping_input.vat.closing_transaction_source_id"));
+    }
+  }
+  const settlementMovement = transaction.lines
+    .filter((line) => line.account === policy.settlement_account)
+    .reduce((sum, line) => sum + line.credit_ore - line.debit_ore, 0n);
+  if (settlementMovement !== boxes["49"] * 100n) {
+    issues.push(issue("VAT_SETTLEMENT_MISMATCH", `VAT settlement account ${policy.settlement_account} does not receive box 49`, "bookkeeping_input.vat.closing_transaction_source_id"));
+  }
 }
 
 function cleanText(value) {

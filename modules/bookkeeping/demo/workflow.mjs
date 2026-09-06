@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import { consolidate } from "../src/index.mjs";
 import { create as createCompanyRecord, open as openCompanyRecord } from "../../company-record/src/index.mjs";
-import { prettyCanonicalJson } from "../../../contracts/src/canonical.mjs";
+import { render as renderArtifacts } from "../../artifacts/src/index.mjs";
+import { prettyCanonicalJson, sha256Json } from "../../../contracts/src/canonical.mjs";
 import { allocateRunDirectory } from "../../../dev/demo-run-directory.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -107,8 +108,13 @@ export async function run(options = {}) {
   const startedAt = new Date();
   console.log(`[run] workspace=${workspace.workspace_id} run_id=${runId} period=${period.id} model=${options.model ?? DEFAULT_MODEL}`);
   let outcome;
+  let candidate = null;
   try {
-    outcome = await consolidate(caseBundle, variant);
+    outcome = await consolidate(caseBundle, variant, {
+      onCandidate(value) {
+        candidate = value;
+      },
+    });
     const visibleAfter = await hashVisibleDirectory(visibleDirectory);
     if (visibleAfter !== visibleBefore) throw new Error("Visible Documents changed during Consolidation; run the period again");
   } catch (error) {
@@ -133,17 +139,23 @@ export async function run(options = {}) {
     started_at: startedAt.toISOString(),
     finished_at: finishedAt.toISOString(),
     duration_ms: finishedAt.getTime() - startedAt.getTime(),
+    candidate_sha256: candidate ? sha256Json(candidate) : null,
     approved: false,
   };
-  const report = developerReport({ workspaceRoot, workspace, descriptor, period, visibleDirectory, outcome });
+  const outputSnapshot = await record.read({ kind: "output_snapshot", runRef: storedRun.ref });
+  const reviewBundles = await Promise.all([
+    "review-source-json-v1",
+    "review-html-v1",
+    "review-pdf-v1",
+  ].map((profile) => renderArtifacts(outputSnapshot, profile)));
+  const reviewArtifacts = reviewBundles.flatMap((bundle) => bundle.payload.artifacts);
   await Promise.all([
     writeFile(path.join(runDirectory, "case.json"), prettyCanonicalJson(caseBundle), "utf8"),
     writeFile(path.join(runDirectory, "outcome.json"), prettyCanonicalJson(outcome), "utf8"),
+    ...(candidate ? [writeFile(path.join(runDirectory, "candidate.json"), prettyCanonicalJson(candidate), "utf8")] : []),
     writeFile(path.join(runDirectory, "manifest.json"), `${JSON.stringify(descriptor, null, 2)}\n`, "utf8"),
-    writeFile(path.join(runDirectory, "candidate.json"), `${JSON.stringify(outcome.canonical_outputs.assessment ?? null, null, 2)}\n`, "utf8"),
     writeFile(path.join(runDirectory, "events.ndjson"), `${JSON.stringify({ timestamp: startedAt.toISOString(), kind: "run_started", run_id: runId })}\n${JSON.stringify({ timestamp: finishedAt.toISOString(), kind: "run_complete", run_id: runId, outcome_kind: outcome.kind })}\n`, "utf8"),
-    writeFile(path.join(runDirectory, "report.md"), report, "utf8"),
-    writeFile(path.join(workspaceRoot, "report.md"), report, "utf8"),
+    ...reviewArtifacts.map((artifact) => writeFile(path.join(runDirectory, artifact.filename), Buffer.from(artifact.content_base64, "base64"))),
   ]);
   workspace.next_run_number += 1;
   workspace.runs.push(descriptor);
@@ -156,7 +168,7 @@ export async function run(options = {}) {
     console.log(`Next: update ${visibleDirectory} and run the same period again`);
   }
   console.log(`[result] workspace=${workspace.workspace_id} run_id=${runId} status=${outcome.kind}`);
-  return { workspaceRoot, runId, outcome, storedRun, report };
+  return { workspaceRoot, runId, outcome, storedRun, outputSnapshot, reviewArtifacts };
 }
 
 export async function approve(options = {}) {
@@ -183,7 +195,19 @@ export async function approve(options = {}) {
   await writeWorkspace(workspaceRoot, workspace);
   const approvalDirectory = path.join(workspaceRoot, "approvals");
   await mkdir(approvalDirectory, { recursive: true });
-  await writeFile(path.join(approvalDirectory, `${descriptor.run_id}.json`), prettyCanonicalJson(result), "utf8");
+  const reviewBundles = await Promise.all([
+    "review-source-json-v1",
+    "review-html-v1",
+    "review-pdf-v1",
+  ].map((profile) => renderArtifacts(result.output_snapshot, profile)));
+  const reviewArtifacts = reviewBundles.flatMap((bundle) => bundle.payload.artifacts);
+  await Promise.all([
+    writeFile(path.join(approvalDirectory, `${descriptor.run_id}.json`), prettyCanonicalJson(result), "utf8"),
+    ...reviewArtifacts.map((artifact) => writeFile(
+      path.join(approvalDirectory, `${descriptor.run_id}-${artifact.filename}`),
+      Buffer.from(artifact.content_base64, "base64"),
+    )),
+  ]);
   console.log(`[approve] workspace=${workspace.workspace_id} run_id=${descriptor.run_id} state_version=${result.state.ref.version} actor=${actor}`);
   const nextPeriod = nextDemoPeriod(workspace, descriptor.period_id);
   if (nextPeriod && await directoryExists(path.join(workspaceRoot, "documents", nextPeriod.id))) {
@@ -271,7 +295,7 @@ function pilotPolicies(period) {
   const year = (period.end ?? period.start).slice(0, 4);
   return {
     core: { country: "SE", currency: "SEK", fiscal_year: { start: `${year}-01-01`, end: `${year}-12-31` }, accounting_method: "invoice" },
-    bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", vat_reporting: { frequency: "quarterly" } },
+    bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" } },
   };
 }
 
@@ -287,61 +311,9 @@ function assertPredecessorReady(state, period) {
 }
 
 function modelVariant(model, allowWeb) {
-  if (model === "gpt-5.6-luna") return { id: "openai-gpt-5.6-luna-high-v1", allow_web: allowWeb };
-  if (model === "gpt-5.6-sol") return { id: "openai-gpt-5.6-sol-high-v1", allow_web: allowWeb };
+  if (model === "gpt-5.6-luna") return { id: "openai-gpt-5.6-luna-high-v3", allow_web: allowWeb };
+  if (model === "gpt-5.6-sol") return { id: "openai-gpt-5.6-sol-high-v3", allow_web: allowWeb };
   throw new Error("--model must be gpt-5.6-luna or gpt-5.6-sol");
-}
-
-function developerReport({ workspaceRoot, workspace, descriptor, period, visibleDirectory, outcome }) {
-  const provenance = outcome.provenance ?? {};
-  const transactionCount = outcome.canonical_outputs.bookkeeping?.ledger?.transactions?.length ?? 0;
-  const next = outcome.kind === "proposal"
-    ? `Review this package, then approve exactly \`${descriptor.run_id}\` with the CLI. Approval has not happened yet.`
-    : `Update the visible Documents directory and rerun \`${period.id}\`.`;
-  return `# Bookkeeping demo — ${workspace.workspace_id} / ${descriptor.run_id}
-
-This developer-facing report demonstrates Bergbok Bookkeeping consolidating one
-fixed previous State and one fixed, user-visible Docset with AI. The AI result
-is independently checked by the deterministic Accounting Kernel before this
-package is recorded. It is not authoritative until explicit approval.
-
-## Run
-
-- Workspace: \`${workspace.workspace_id}\`
-- Consolidation run: \`${descriptor.run_id}\`
-- Started (UTC): ${descriptor.started_at}
-- Finished (UTC): ${descriptor.finished_at}
-- Duration: ${Math.round(descriptor.duration_ms / 1000)} seconds
-- Model: \`${provenance.model ?? "unknown"}\`, reasoning \`${provenance.reasoning_effort ?? "unknown"}\`
-- Model calls: ${provenance.model_calls ?? 0}; tool calls: ${provenance.tool_calls ?? 0}
-- Estimated API cost: ${(provenance.usage?.estimated_usd ?? 0).toFixed(6)} USD
-- Worker network: \`${provenance.worker_network ?? "unknown"}\`
-
-## Input
-
-- Company Record: \`${path.join(workspaceRoot, "record")}\`
-- Period: \`${period.id}\` (${period.kind}, ${period.start ?? "beginning of available history"} through ${period.end})
-- Visible Documents: \`${visibleDirectory}\`
-- Fixed Docset: \`${descriptor.docset_ref.sha256}\`
-- Previous State: sequence ${descriptor.previous_state_ref.version}, \`${descriptor.previous_state_ref.sha256}\`
-- The worker received only this frozen Docset and previous State; later-period directories were not mounted.
-
-## Output
-
-- Outcome: \`${outcome.kind}\`
-- Proposed balanced transactions: ${transactionCount}
-- Projected Bookkeeping State: ${outcome.projected_state ? `\`${outcome.projected_state.ref.sha256}\`` : "none"}
-- Approval: pending
-- Files: \`case.json\`, \`candidate.json\`, \`outcome.json\`, \`manifest.json\`, \`events.ndjson\`, and \`report.md\`
-
-## Next action
-
-${next}
-
-## Bookkeeping review returned by the module
-
-${outcome.review.report_markdown?.trimEnd() ?? outcome.review.summary ?? "No review was returned."}
-`;
 }
 
 async function copyVisibleDocset(source, destination) {

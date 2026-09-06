@@ -16,20 +16,16 @@ import {
   mapPayrollFactsToPostings,
   normalizePayrollAccountingFacts,
 } from "./private/payroll-facts.mjs";
-import {
-  localizeBookkeepingItems,
-  needsInputReport,
-  outOfScopeReport,
-  proposalReport,
-} from "./private/report.mjs";
+import { localizeBookkeepingItems } from "./private/localization.mjs";
+import { classifiedReview, proposalReview } from "./private/review.mjs";
 import { consolidateWithAi } from "./private/ai/index.mjs";
 
 const DOMAIN = "bookkeeping";
-const MODULE_VERSION = "2.0.0";
-const DEFAULT_VARIANT = "offline-deterministic-v2";
-const DEFAULT_AI_VARIANT = "openai-gpt-5.6-luna-high-v2";
+const MODULE_VERSION = "4.0.0";
+const DEFAULT_VARIANT = "offline-deterministic-v3";
+const DEFAULT_AI_VARIANT = "openai-gpt-5.6-luna-high-v3";
 
-export async function consolidate(caseBundle, variantRef = undefined) {
+export async function consolidate(caseBundle, variantRef = undefined, diagnostics = {}) {
   assertConsolidationCase(caseBundle);
   if (caseBundle.payload.domain !== DOMAIN) {
     return consolidateOffline(caseBundle, variantRef ?? DEFAULT_VARIANT);
@@ -49,6 +45,7 @@ export async function consolidate(caseBundle, variantRef = undefined) {
       provenance,
       assessment,
     }),
+    onCandidate: diagnostics.onCandidate,
   });
 }
 
@@ -126,12 +123,11 @@ export function consolidateOffline(caseBundle, variantRef = DEFAULT_VARIANT, opt
 
   const projected = sealContent({
     schemaId: "se.bergbok.bookkeeping.state",
-    schemaVersion: "2.0",
+    schemaVersion: "3.0",
     stableId: `${caseBundle.payload.company_id}:bookkeeping-state`,
     version: caseBundle.ref.version,
     payload: result.domainState,
   });
-  const payrollTransactionCount = mappedPayroll.transactions.length;
   const directEvidence = options.input
     ? referencedDocsetEvidence(extracted.input, caseBundle, options.core?.evidence_document_ids ?? [])
     : [{ kind: "docset_document", document_id: extracted.document_id, docset_ref: cloneJson(caseBundle.payload.docset.ref) }];
@@ -150,13 +146,6 @@ export function consolidateOffline(caseBundle, variantRef = DEFAULT_VARIANT, opt
     language,
     "message",
   );
-  const report = proposalReport({
-    caseBundle,
-    output: result.canonicalOutput,
-    warnings,
-    payrollCount: payrollTransactionCount,
-    language,
-  });
   const proposedChanges = [{
     action: "replace_domain_state",
     domain: DOMAIN,
@@ -172,17 +161,11 @@ export function consolidateOffline(caseBundle, variantRef = DEFAULT_VARIANT, opt
     projectedState: projected,
     canonicalOutputs: {
       bookkeeping: result.canonicalOutput,
-      ...(options.assessment ? { assessment: cloneJson(options.assessment) } : {}),
+      period_delta: result.periodDelta,
     },
     warnings,
     evidence,
-    review: {
-      language,
-      summary: language === "sv"
-        ? `${result.canonicalOutput.ledger.transactions.length} balanserade transaktioner föreslås för ${caseBundle.payload.period.id}`
-        : `${result.canonicalOutput.ledger.transactions.length} balanced transactions proposed for ${caseBundle.payload.period.id}`,
-      report_markdown: report,
-    },
+    review: proposalReview({ caseBundle, output: result.canonicalOutput, assessment: options.assessment }),
     provenance: { ...provenance(variant, options.input ? null : extracted.document_id, payrollFacts), ...cloneJson(options.provenance ?? {}) },
   });
 }
@@ -202,13 +185,7 @@ function needsInput(caseBundle, issues, variant, inputDocumentId = null) {
     domain: DOMAIN,
     caseRef: caseBundle.ref,
     questions,
-    review: {
-      language,
-      summary: language === "sv"
-        ? `${questions.length} fråga${questions.length === 1 ? "" : "or"} måste lösas innan ett förslag kan skapas`
-        : `${questions.length} issue${questions.length === 1 ? "" : "s"} must be resolved before a proposal can be made`,
-      report_markdown: needsInputReport(caseBundle, questions, language),
-    },
+    review: classifiedReview({ caseBundle, kind: "needs_input", count: questions.length }),
     provenance: provenance(variant, inputDocumentId, []),
   });
 }
@@ -221,13 +198,7 @@ function outOfScope(caseBundle, reasons, variant, inputDocumentId = null) {
     domain: DOMAIN,
     caseRef: caseBundle.ref,
     reasons: localizedReasons,
-    review: {
-      language,
-      summary: language === "sv"
-        ? "Ärendet ligger utanför den stödda bokföringsprofilen"
-        : "The case is outside the supported Bookkeeping profile",
-      report_markdown: outOfScopeReport(caseBundle, localizedReasons, language),
-    },
+    review: classifiedReview({ caseBundle, kind: "out_of_scope", count: localizedReasons.length }),
     provenance: provenance(variant, inputDocumentId, []),
   });
 }
@@ -310,7 +281,10 @@ function initialCoreProposal(caseBundle, organization, candidateCore) {
     address: cloneJson(candidateCore?.address ?? {}),
     bookkeeping_start_date: startDate,
     enabled_modules: ["bookkeeping"],
-    policies: cloneJson(caseBundle.payload.effective_policies.core ?? {}),
+    policies: {
+      ...cloneJson(caseBundle.payload.effective_policies.core ?? {}),
+      bookkeeping: cloneJson(candidateCore.policies.bookkeeping),
+    },
   };
 }
 

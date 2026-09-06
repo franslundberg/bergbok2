@@ -33,8 +33,8 @@ import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import type { PublicAuthState } from "@/lib/bergbok/auth-types";
-import type { WorkbenchTarget } from "@/lib/bergbok/types";
-import { claimWorkbenchNavigation } from "@/lib/bergbok/workbench-navigation";
+import type { WorkContext } from "@/lib/bergbok/types";
+import { claimWorkContextNavigation } from "@/lib/bergbok/workbench-navigation";
 import { emailAddressInText, latestEmailAddress } from "@/lib/bergbok/chat-policy";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +45,8 @@ export function Thread({
   onAuthAction,
   onUpload,
   uploadPeriodId,
-  onWorkbenchTarget,
+  contextLabel,
+  onWorkContext,
 }: {
   authState: PublicAuthState;
   authBusy: boolean;
@@ -53,7 +54,8 @@ export function Thread({
   onAuthAction: (action: AuthAction) => Promise<void>;
   onUpload: (files: FileList) => Promise<void>;
   uploadPeriodId?: string;
-  onWorkbenchTarget: (target: WorkbenchTarget) => void;
+  contextLabel?: string;
+  onWorkContext: (context: WorkContext) => void;
 }) {
   const isEmpty = useAuiState((state) => state.thread.isEmpty);
   const emailAddress = useAuiState((state) => latestEmailAddress(state.thread.messages));
@@ -92,10 +94,10 @@ export function Thread({
 
   const handleToolNavigation = useCallback(
     (toolCallId: string, result: unknown) => {
-      const target = claimWorkbenchNavigation(handledToolCalls.current, toolCallId, result);
-      if (target) onWorkbenchTarget(target);
+      const context = claimWorkContextNavigation(handledToolCalls.current, toolCallId, result);
+      if (context) onWorkContext(context);
     },
-    [onWorkbenchTarget],
+    [onWorkContext],
   );
   const messageComponents = useMemo(
     () => ({
@@ -157,6 +159,7 @@ export function Thread({
                 authenticated={authState.stage === "authenticated"}
                 onUpload={onUpload}
                 uploadPeriodId={uploadPeriodId}
+                contextLabel={contextLabel}
                 onLoginEmail={(email) => {
                   setDismissedEmail(undefined);
                   setLoginEmail(email);
@@ -174,11 +177,13 @@ function Composer({
   authenticated,
   onUpload,
   uploadPeriodId,
+  contextLabel,
   onLoginEmail,
 }: {
   authenticated: boolean;
   onUpload: (files: FileList) => Promise<void>;
   uploadPeriodId?: string;
+  contextLabel?: string;
   onLoginEmail: (email: string) => void;
 }) {
   const aui = useAui();
@@ -236,6 +241,11 @@ function Composer({
           enterKeyHint="send"
           aria-label="Meddelande"
         />
+        {authenticated && contextLabel && (
+          <div className="px-2.5 text-xs text-muted-foreground" aria-label="Aktivt arbetskontext">
+            Gäller: {contextLabel}
+          </div>
+        )}
         {uploadError && (
           <p className="px-2 text-sm text-destructive" role="alert">
             {uploadError}
