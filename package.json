@@ -35,6 +35,7 @@
     "demo:modules": "npm run demo:company-record && npm run demo:bookkeeping:offline && npm run demo:payroll && npm run demo:artifacts && npm run demo:evaluation",
     "demo:company-record": "node modules/company-record/demo/run.mjs",
     "demo:bookkeeping": "node modules/bookkeeping/demo/cli.mjs",
+    "demo:bookkeeping:complete": "node modules/bookkeeping/demo/complete.mjs",
     "demo:bookkeeping:offline": "node modules/bookkeeping/demo/run.mjs",
     "demo:payroll": "node modules/payroll/demo/run.mjs",
     "demo:artifacts": "node modules/artifacts/demo/run.mjs",

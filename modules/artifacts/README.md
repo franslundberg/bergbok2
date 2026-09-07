@@ -19,6 +19,11 @@ lay out that shared model. The registered review profiles are:
   details;
 - `review-pdf-v1` for a complete, fully expanded A4 report.
 
+HTML and PDF show each Bookkeeping review transaction summary as its sole
+human-facing narrative. Expanded details contain source and evidence IDs plus
+the underlying accounts and amounts; the canonical ledger description remains
+only in the exact source JSON and bookkeeping-format outputs such as SIE.
+
 Review artifacts and payslip PDFs use the `sv` or `en` language frozen in the
 snapshot. There is no language override and no legacy snapshot adapter. VAT
 XML and VAT verification PDF dates come from the kernel-derived cycle start

@@ -50,7 +50,6 @@ const LABELS = Object.freeze({
     showDebug: "Visa",
     none: "Inga.",
     sourceId: "Käll-ID",
-    description: "Beskrivning",
     account: "Konto",
     accountName: "Kontonamn",
     debit: "Debet",
@@ -129,7 +128,6 @@ const LABELS = Object.freeze({
     showDebug: "Show",
     none: "None.",
     sourceId: "Source ID",
-    description: "Description",
     account: "Account",
     accountName: "Account name",
     debit: "Debit",
@@ -473,7 +471,6 @@ function buildTransactions(bookkeeping, review) {
       verificationId: transaction.verification_id,
       date: transaction.date,
       summary: summaries.get(transaction.source_id),
-      description: transaction.description,
       total,
       evidenceDocumentIds: [...(transaction.evidence_document_ids ?? [])],
       lines: transaction.lines.map((line) => ({

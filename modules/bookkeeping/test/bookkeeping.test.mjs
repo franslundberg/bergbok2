@@ -322,7 +322,7 @@ test("Bookkeeping review requires exact single-line transaction-summary coverage
     narrative_source: "ai",
     summary: "Två transaktioner föreslås.",
     transaction_summaries: [
-      { source_id: "T1", summary: "Första transaktionen." },
+      { source_id: "T1", summary: "Filippa betalade 25 000 kr. Beloppet bokförs på företagskontot mot konto 2081." },
       { source_id: "T2", summary: "Andra transaktionen." },
     ],
   };
@@ -345,15 +345,43 @@ test("Bookkeeping review requires exact single-line transaction-summary coverage
   );
 });
 
-test("deterministic review summaries normalize and bound validated descriptions", () => {
+test("deterministic review summaries combine the event and account treatment within the limit", () => {
   const description = `  En lång\n beskrivning ${"x".repeat(300)}  `;
   const review = proposalReview({
     caseBundle: makeCase(),
-    output: { ledger: { transactions: [{ source_id: "T1", description }] } },
+    output: { ledger: { transactions: [{
+      source_id: "T1",
+      description,
+      lines: [
+        { account: "4010", account_name: "Varuinköp", debit: "125.00 SEK", credit: "0.00 SEK" },
+        { account: "1930", account_name: "Företagskonto", debit: "0.00 SEK", credit: "125.00 SEK" },
+      ],
+    }] } },
   });
   assert.equal(review.narrative_source, "deterministic");
   assert.equal(review.transaction_summaries[0].summary.length, 240);
   assert.doesNotMatch(review.transaction_summaries[0].summary, /\n/);
+  assert.match(review.transaction_summaries[0].summary, /^En lång beskrivning/);
+  assert.match(review.transaction_summaries[0].summary, /Bokförs med 125,00 kr i debet på 4010 mot kredit på 1930\.$/);
+});
+
+test("deterministic review summaries name debit and credit treatment in the selected language", () => {
+  const transaction = {
+    source_id: "T1",
+    description: "Material paid from bank",
+    lines: [
+      { account: "4010", account_name: "Materials", debit: "125.00 SEK", credit: "0.00 SEK" },
+      { account: "1930", account_name: "Bank", debit: "0.00 SEK", credit: "125.00 SEK" },
+    ],
+  };
+  const review = proposalReview({
+    caseBundle: makeCase({ language: "en" }),
+    output: { ledger: { transactions: [transaction] } },
+  });
+  assert.equal(
+    review.transaction_summaries[0].summary,
+    "Material paid from bank. Booked as a debit to Materials (4010), SEK 125.00 against a credit to Bank (1930), SEK 125.00.",
+  );
 });
 
 test("ordinary month continues numbering, balances, open items, reconciliation, and VAT outputs", async () => {

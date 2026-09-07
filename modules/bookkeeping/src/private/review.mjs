@@ -1,4 +1,5 @@
 import { cloneJson } from "../../../../contracts/src/canonical.mjs";
+import { formatMoney, parseMoney } from "../../../../contracts/src/money.mjs";
 
 const REVIEW_SCHEMA_VERSION = "1.0";
 const TRANSACTION_SUMMARY_MAX_LENGTH = 240;
@@ -12,7 +13,7 @@ export function proposalReview({ caseBundle, output, assessment = null }) {
     : `${output.ledger.transactions.length} balanced transactions are proposed for ${caseBundle.payload.period.id}.`);
   const transactionSummaries = supplied?.transaction_summaries ?? output.ledger.transactions.map((transaction) => ({
     source_id: transaction.source_id,
-    summary: fallbackTransactionSummary(transaction.description),
+    summary: fallbackTransactionSummary(transaction, language),
   }));
   const review = {
     schema_version: REVIEW_SCHEMA_VERSION,
@@ -92,10 +93,74 @@ export function assertBookkeepingReview(review, transactions) {
   return true;
 }
 
-function fallbackTransactionSummary(value) {
-  const singleLine = String(value).replace(/\s+/g, " ").trim();
-  if (singleLine.length <= TRANSACTION_SUMMARY_MAX_LENGTH) return singleLine;
-  return `${singleLine.slice(0, TRANSACTION_SUMMARY_MAX_LENGTH - 1).trimEnd()}…`;
+function fallbackTransactionSummary(transaction, language) {
+  const event = sentence(String(transaction.description).replace(/\s+/g, " ").trim());
+  const debits = postingSide(transaction.lines, "debit", language);
+  const credits = postingSide(transaction.lines, "credit", language);
+  const treatment = debits && credits
+    ? language === "sv"
+      ? `Bokförs i debet på ${debits} mot kredit på ${credits}.`
+      : `Booked as a debit to ${debits} against a credit to ${credits}.`
+    : "";
+  const full = [event, treatment].filter(Boolean).join(" ");
+  if (full.length <= TRANSACTION_SUMMARY_MAX_LENGTH) return full;
+  const compactTreatment = compactPostingTreatment(transaction.lines, language);
+  return boundedSummary(event, compactTreatment);
+}
+
+function postingSide(lines, field, language) {
+  return postingLines(lines, field)
+    .map((line) => `${line.account_name} (${line.account}), ${displayMoney(line[field], language)}`)
+    .join("; ");
+}
+
+function compactPostingTreatment(lines, language) {
+  const debits = postingLines(lines, "debit");
+  const credits = postingLines(lines, "credit");
+  if (!debits.length || !credits.length) return "";
+  const total = debits.reduce((sum, line) => sum + parseMoney(line.debit).minorUnits, 0n);
+  const currency = parseMoney(debits[0].debit).currency;
+  const amount = displayMoney(formatMoney(total, currency), language);
+  const debitAccounts = compactAccounts(debits, language);
+  const creditAccounts = compactAccounts(credits, language);
+  return language === "sv"
+    ? `Bokförs med ${amount} i debet på ${debitAccounts} mot kredit på ${creditAccounts}.`
+    : `Booked with ${amount} debited to ${debitAccounts} against credits to ${creditAccounts}.`;
+}
+
+function postingLines(lines, field) {
+  return (lines ?? []).filter((line) => parseMoney(line[field]).minorUnits !== 0n);
+}
+
+function compactAccounts(lines, language) {
+  const accounts = [...new Set(lines.map((line) => line.account))];
+  const shown = accounts.slice(0, 3).join(", ");
+  if (accounts.length <= 3) return shown;
+  return `${shown} + ${accounts.length - 3} ${language === "sv" ? "konton" : "accounts"}`;
+}
+
+function boundedSummary(event, treatment) {
+  if (!treatment) return truncate(event, TRANSACTION_SUMMARY_MAX_LENGTH);
+  const eventLimit = Math.max(1, TRANSACTION_SUMMARY_MAX_LENGTH - treatment.length - 1);
+  return `${truncate(event, eventLimit)} ${treatment}`;
+}
+
+function truncate(value, limit) {
+  if (value.length <= limit) return value;
+  if (limit === 1) return "…";
+  return `${value.slice(0, limit - 1).trimEnd()}…`;
+}
+
+function displayMoney(value, language) {
+  const parsed = parseMoney(value);
+  const [number] = value.split(" ");
+  if (language === "sv") return `${number.replace(".", ",")} ${parsed.currency === "SEK" ? "kr" : parsed.currency}`;
+  return `${parsed.currency} ${number}`;
+}
+
+function sentence(value) {
+  if (!value || /[.!?]$/.test(value)) return value;
+  return `${value}.`;
 }
 
 function assertExactKeys(value, expected, label) {

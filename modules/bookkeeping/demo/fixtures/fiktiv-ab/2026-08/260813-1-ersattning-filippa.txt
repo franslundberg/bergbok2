@@ -1,0 +1,71 @@
+UNDERLAG FÖR ERSÄTTNING AV PRIVATA UTLÄGG
+
+Underlags-ID: 260813-1
+Bolag: Fiktiv AB
+Organisationsnummer: 559999-0008
+Ersättningsmottagare: Filippa Stark
+Begäran och signering i SEB: 2026-08-12
+Utfört betaldatum enligt SEB-underlaget: 2026-08-13
+
+Filippa Stark har betalat följande inköp privat för Fiktiv AB:
+
+1. Inköp 2026-07-24 från JLCPCB
+   Ändamål: Kretskort och montering för B046.
+   Order: W2026072417359365
+   Orderbelopp: 244,07 USD
+   Privat kortbelopp: 2 426,36 SEK
+   Underlag:
+   - 260724-1-boards-B046-from-jlc.pdf
+   - 260724-1-order-paid.pdf
+   - 260724-1-2426SEK.png
+   - 260804-1-import-dhl.pdf
+
+2. Inköp 2026-08-03 från JLCPCB
+   Ändamål: Kretskort och montering för B043.
+   Order: W2026080318317058
+   Orderbelopp: 62,83 USD
+   Privat kortbelopp: 615,71 SEK
+   Underlag:
+   - 260803-1-pcb-production-invoice.pdf
+   - 260803-1-paid.pdf
+   - 260803-1-615SEK.jpg
+   - 260807-1-dhl-import.pdf
+
+Summa begärd ersättning:
+
+  2 426,36 kr
++   615,71 kr
+= 3 042,07 kr
+
+Filippa Stark begär ersättning från Fiktiv AB med 3 042,07 kr,
+utan påslag, för ovanstående privata utlägg.
+
+Betalning av ersättningen
+
+Överföringen från Fiktiv AB:s företagskonto till Filippa Starks
+konto signerades 2026-08-12. SEB:s signerade betaldetaljer anger 2026-08-13 som
+utfört betaldatum och 3 042,07 kr som belopp.
+
+Bankunderlag:
+- 260813-1-bank.pdf
+
+Bankavstämning och bokföringskoppling
+
+Inköpen ska bokföras mot en skuld till Filippa, inte direkt mot företagskontot,
+eftersom Filippa betalade dem privat. När ersättningen bokförs den 2026-08-13
+minskar skulden till Filippa med 3 042,07 kr och konto 1930 Företagskonto
+krediteras med 3 042,07 kr. Om konto 2893 används för skulden blir
+avstämningsposten:
+
+  Debet  2893 Skulder till närstående personer, kortfristig del  3 042,07 kr
+  Kredit 1930 Företagskonto                                     3 042,07 kr
+
+Denna ersättning omfattar endast de privat betalade kortbeloppen ovan.
+Beräknad importmoms i DHL-underlagen ingår inte i ersättningen och hanteras
+separat i momsredovisningen.
+
+Kontrollstatus
+
+Bankunderlaget visar signering 2026-08-12 och utfört betaldatum 2026-08-13.
+Efter att överföringen har bokförts på SEB-kontot ska bankraden stämmas av mot
+detta underlag med beloppet 3 042,07 kr och datumet 2026-08-13.

@@ -173,6 +173,8 @@ test("agent dispatches custom tools, replays call IDs, disables storage, and sto
   assert.equal(bodies[0].store, false);
   assert.equal(bodies[0].parallel_tool_calls, false);
   assert.deepEqual(bodies[0].include, ["reasoning.encrypted_content"]);
+  assert.match(bodies[0].instructions, /Each transaction summary is the sole narrative/);
+  assert.match(bodies[0].instructions, /add a reason only for a material assumption, tax classification, or non-obvious judgment/);
   assert.ok(bodies[1].input.some((item) => item.type === "function_call_output" && item.call_id === "call-shell"));
 });
 

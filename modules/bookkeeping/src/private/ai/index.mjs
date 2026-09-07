@@ -204,7 +204,7 @@ Write one JSON object with no Markdown fences:
     "summary": "Plain-text consolidation summary in the selected language",
     "transaction_summaries": [{
       "source_id": "exact source_id of a resulting canonical transaction",
-      "summary": "One concise plain-text line, at most 240 characters"
+      "summary": "One strong human-facing summary: one or two sentences on one line, at most 240 characters"
     }]
   },
   "questions": [{ "question_id": "BKQ1", "code": "MISSING_FACT", "prompt": "Question in the selected language", "evidence_document_ids": [] }],
@@ -223,7 +223,7 @@ For the first Start or Import, core.policies.bookkeeping is required. Extract th
 
 VAT cycle dates are deterministic and must not be included in candidate.json. Outside quarter end, vat.status is not_due and both closing_transaction_source_id and declaration_boxes are null. In the Period containing quarter end, vat.status is due, declaration_boxes are required, and closing_transaction_source_id names the final transaction that closes configured input and output VAT accounts to 2650 on the quarter-end date.
 
-Review is always required. Its summary is plain text. For a proposal, transaction_summaries must contain exactly one entry for every resulting canonical transaction, keyed by the transaction's exact source_id, including payroll-derived and VAT-closing transactions. Each transaction summary is one line and at most 240 characters. For needs_input and out_of_scope, transaction_summaries must be empty.
+Review is always required. Its summary is plain text. For a proposal, transaction_summaries must contain exactly one entry for every resulting canonical transaction, keyed by the transaction's exact source_id, including payroll-derived and VAT-closing transactions. Each transaction summary is the sole human-facing narrative for that transaction. Write one or two concise sentences on one physical line, at most 240 characters, in the selected language. Combine what happened with how it was booked, using meaningful account names or numbers and the amount when relevant. Add a qualification or reason only when the treatment depends on a material accepted assumption, tax classification, or non-obvious judgment; omit routine explanations and boilerplate. Make the summary consistent with the exact resulting transaction. For needs_input and out_of_scope, transaction_summaries must be empty.
 
 For proposal, questions must be empty and bookkeeping_input is required. For needs_input, questions must be non-empty; bookkeeping_input may contain a safe partial draft. For out_of_scope, reasons must be non-empty. Core is required only when initializing the first Start or Import State. Omit fields that do not apply, except questions, warnings, and reasons are always arrays.
 `;

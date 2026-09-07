@@ -72,7 +72,7 @@ function transactions(section, model) {
   return series + section.items.map((item) => `<details>
 <summary><strong>${escape(item.verificationId)}</strong><span>${escape(item.date)}</span><span>${escape(item.summary)}</span><span class="amount money">${escape(formatMoneyDisplay(item.total, model.language))}</span></summary>
 <div class="detail">
-<dl class="meta">${meta(l.sourceId, item.sourceId)}${meta(l.description, item.description)}${meta(l.evidenceIds, item.evidenceDocumentIds.join(", ") || l.none)}</dl>
+<dl class="meta">${meta(l.sourceId, item.sourceId)}${meta(l.evidenceIds, item.evidenceDocumentIds.join(", ") || l.none)}</dl>
 <div class="table-wrap"><table><thead><tr><th>${escape(l.account)}</th><th>${escape(l.accountName)}</th><th class="money">${escape(l.debit)}</th><th class="money">${escape(l.credit)}</th></tr></thead><tbody>
 ${item.lines.map((line) => `<tr><td><code>${escape(line.account)}</code></td><td>${escape(line.accountName)}</td><td class="money">${escape(formatMoneyNumberDisplay(line.debit, model.language))}</td><td class="money">${escape(formatMoneyNumberDisplay(line.credit, model.language))}</td></tr>`).join("")}
 </tbody></table></div></div></details>`).join("");

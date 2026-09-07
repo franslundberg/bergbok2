@@ -190,7 +190,7 @@ function drawTransaction(doc, transaction, l, language) {
   doc.moveDown(0.35);
   doc.font("ReportBold").fontSize(10).fillColor(COLORS.blue).text(`${transaction.verificationId}  ·  ${transaction.date}  ·  ${formatMoneyDisplay(transaction.total, language)}`);
   paragraph(doc, transaction.summary, { bold: true });
-  drawKeyValues(doc, [[l.sourceId, transaction.sourceId], [l.description, transaction.description], [l.evidenceIds, transaction.evidenceDocumentIds.join(", ") || l.none]], 8);
+  drawKeyValues(doc, [[l.sourceId, transaction.sourceId], [l.evidenceIds, transaction.evidenceDocumentIds.join(", ") || l.none]], 8);
   drawTable(doc, [l.account, l.accountName, l.debit, l.credit], transaction.lines.map((line) => [line.account, line.accountName, formatMoneyNumberDisplay(line.debit, language), formatMoneyNumberDisplay(line.credit, language)]), [65, 238, 100, 100], ["left", "left", "right", "right"], 8);
 }
 

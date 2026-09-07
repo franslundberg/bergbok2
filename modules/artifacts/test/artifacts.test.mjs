@@ -37,7 +37,7 @@ async function bookkeepingSnapshot(status = "preliminary", language = "en") {
   const input = {
     schema_id: "se.bergbok.bookkeeping-input", schema_version: "3.0", company_id: "example-ab", period_id: "2026-05", mode: "ordinary",
     transactions: [{
-      source_id: "coffee-1", date: "2026-05-12", description: "Coffee & supplies", evidence_document_ids: ["receipt.pdf"],
+      source_id: "coffee-1", date: "2026-05-12", description: "INTERNAL_CANONICAL_COFFEE_DESCRIPTION", evidence_document_ids: ["receipt.pdf"],
       lines: [
         { account: "7690", account_name: "Other personnel costs", debit: "25.00 SEK", credit: "0.00 SEK" },
         { account: "1930", account_name: "Bank", debit: "0.00 SEK", credit: "25.00 SEK" },
@@ -64,7 +64,10 @@ async function bookkeepingSnapshot(status = "preliminary", language = "en") {
       upstream_results: [],
     },
   });
-  const outcome = await consolidate(caseBundle);
+  const outcome = structuredClone(await consolidate(caseBundle));
+  outcome.review.transaction_summaries[0].summary = language === "sv"
+    ? "Café AB tog 25,00 kr för kaffe, vilket bokförs på Övriga personalkostnader (7690) mot Företagskonto (1930). Momsen har inte lyfts eftersom underlaget saknar specificerad moms."
+    : "Café AB charged SEK 25.00 for coffee, booked to Other personnel costs (7690) against Bank (1930).";
   const runRef = createContentRef({ schemaId: "se.bergbok.consolidation-run", stableId: "example-ab:2026-05:bookkeeping:run", version: 1, payload: outcome });
   return sealContent({
     schemaId: "se.bergbok.output-snapshot", schemaVersion: "2.0", stableId: `${runRef.stable_id}:output-snapshot`, version: status === "approved" ? "approved:test" : "preliminary",
@@ -175,14 +178,18 @@ test("review JSON is exact and HTML is semantic, collapsed, escaped, and complet
     "summary", "core", "transactions", "open_items", "balances",
     "verification", "reconciliations", "vat", "evidence", "provenance",
   ]);
+  assert.equal(Object.hasOwn(model.transactions[0], "description"), false);
   const source = await render(snapshot, "review-source-json-v1");
-  assert.equal(artifactBytes(source.payload.artifacts[0]).toString("utf8"), prettyCanonicalJson(snapshot));
+  const sourceJson = artifactBytes(source.payload.artifacts[0]).toString("utf8");
+  assert.equal(sourceJson, prettyCanonicalJson(snapshot));
+  assert.match(sourceJson, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
   const html = artifactBytes((await render(snapshot, "review-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.match(html, /<details>/);
   assert.doesNotMatch(html, /<details open/);
   assert.match(html, /Example Ångström AB · 559999-9999 · Created 31 March 2026/);
   assert.match(html, /1–31 May 2026 · Proposal/);
-  assert.match(html, /Coffee &amp; supplies/);
+  assert.match(html, /Café AB charged SEK 25\.00 for coffee, booked to Other personnel costs \(7690\) against Bank \(1930\)\./);
+  assert.doesNotMatch(html, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
   assert.match(html, /7690/);
   assert.match(html, /SEK\u00a025\.00/);
   assert.doesNotMatch(html, /25\.00 SEK/);
@@ -223,14 +230,30 @@ test("review JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.match(htmlWithCompanyChange, /<h2>Company information changes<\/h2>/);
   assert.doesNotMatch(htmlWithCompanyChange, /<h2>Company facts<\/h2>/);
 
+  const hostileSummaryHtml = renderReviewHtml({
+    ...model,
+    transactions: model.transactions.map((transaction, index) => index === 0
+      ? { ...transaction, summary: '<img src=x onerror="alert(1)">' }
+      : transaction),
+    sections: model.sections.map((section) => section.id === "transactions"
+      ? {
+          ...section,
+          items: section.items.map((transaction, index) => index === 0
+            ? { ...transaction, summary: '<img src=x onerror="alert(1)">' }
+            : transaction),
+        }
+      : section),
+  });
+  assert.match(hostileSummaryHtml, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
+  assert.doesNotMatch(hostileSummaryHtml, /<img src=x/);
+
   const hostile = structuredClone(snapshot.payload);
-  hostile.outcome.canonical_outputs.bookkeeping.ledger.transactions[0].description = '<img src=x onerror="alert(1)">';
-  hostile.outcome.canonical_outputs.period_delta.transactions[0].description = '<img src=x onerror="alert(1)">';
+  hostile.outcome.canonical_outputs.bookkeeping.ledger.transactions[0].description = "HOSTILE_CANONICAL_DESCRIPTION";
+  hostile.outcome.canonical_outputs.period_delta.transactions[0].description = "HOSTILE_CANONICAL_DESCRIPTION";
   hostile.proposal_digest = proposalDigest(hostile.outcome);
   const hostileSnapshot = sealContent({ schemaId: snapshot.ref.schema_id, schemaVersion: "2.0", stableId: "hostile-source", version: 1, payload: hostile });
   const hostileHtml = artifactBytes((await render(hostileSnapshot, "review-html-v1")).payload.artifacts[0]).toString("utf8");
-  assert.match(hostileHtml, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
-  assert.doesNotMatch(hostileHtml, /<img src=x/);
+  assert.doesNotMatch(hostileHtml, /HOSTILE_CANONICAL_DESCRIPTION/);
 });
 
 test("the PDF contains the reader-facing review with Unicode text", async () => {
@@ -244,7 +267,8 @@ test("the PDF contains the reader-facing review with Unicode text", async () => 
   assert.match(text, /Example Ångström AB/);
   assert.match(text, /Created 31 March 2026/);
   assert.match(text, /1–31 May 2026 · Proposal/);
-  assert.match(text, /Coffee & supplies/);
+  assert.match(text, /Café AB charged SEK 25\.00 for coffee, booked to Other personnel costs \(7690\) against Bank \(1930\)\./);
+  assert.doesNotMatch(text, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
   assert.match(text, /Other personnel costs/);
   assert.match(text, /supplier:coffee/);
   assert.match(text, /1930/);
@@ -286,6 +310,8 @@ test("the PDF contains the reader-facing review with Unicode text", async () => 
   const compactSwedishText = swedishText.replace(/\s+/g, " ");
   assert.match(swedishText, /25,00\s*kr/);
   assert.match(compactSwedishText, /7690 Other personnel costs 25,00 0,00/);
+  assert.match(compactSwedishText, /Momsen har inte lyfts eftersom underlaget saknar specificerad moms\./);
+  assert.doesNotMatch(swedishText, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
 
   const emptyOpenItemsModel = {
     ...model,
@@ -339,6 +365,8 @@ test("unapproved reports are explicitly marked and approved reports are not", as
   const approved = artifactBytes((await render(await bookkeepingSnapshot("approved", "sv"), "review-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.match(approved, /1–31 maj 2026 · Godkänd version 1/);
   assert.match(approved, /25,00\u00a0kr/);
+  assert.match(approved, /Momsen har inte lyfts eftersom underlaget saknar specificerad moms\./);
+  assert.doesNotMatch(approved, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
   assert.match(approved, /<section><h2>Debug<\/h2><details class="debug-details"><summary>Visa<\/summary>/);
   assert.doesNotMatch(approved, /Ingenting har godkänts/);
   assert.doesNotMatch(approved, /Frågor, varningar och orsaker/);
@@ -425,7 +453,9 @@ test("needs-input and out-of-scope outcomes use the same complete review pipelin
 
 test("unrelated SIE and payslip profiles still render from OutputSnapshot v2", async () => {
   const sie = await render(await bookkeepingSnapshot("approved"), "sie4-v1");
-  assert.match(artifactBytes(sie.payload.artifacts[0]).toString("utf8"), /#VER "A" 8 20260512/);
+  const sieText = artifactBytes(sie.payload.artifacts[0]).toString("utf8");
+  assert.match(sieText, /#VER "A" 8 20260512/);
+  assert.match(sieText, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
   const payslip = await render(payrollSnapshot(), "payslips-pdf-v1");
   assert.match(artifactBytes(payslip.payload.artifacts[0]).toString("latin1"), /Lönespecifikation/);
 });

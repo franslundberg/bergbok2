@@ -20,8 +20,9 @@ Options:
   --allow-web            Enable filtered public egress for the document worker
 
 Without arguments, a new Fiktiv AB workspace is created with Start, 2026-05,
-and 2026-06 Documents, and only Start is run. Fixture periods use their stored
-dates, so ordinary fixture runs need only --period. Approval is always separate.
+2026-06, 2026-07, and 2026-08 Documents, and only Start is run. Fixture
+periods use their stored dates, so ordinary fixture runs need only --period.
+Approval is always separate.
 `;
 
 function parse(argv) {
