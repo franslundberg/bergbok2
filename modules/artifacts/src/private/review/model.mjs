@@ -1,4 +1,4 @@
-import { canonicalStringify } from "../../../../../contracts/src/canonical.mjs";
+import { canonicalStringify, prettyCanonicalJson } from "../../../../../contracts/src/canonical.mjs";
 import {
   assertContentRef,
   assertPeriod,
@@ -14,7 +14,7 @@ const BOOKKEEPING_SCHEMA = "3.0";
 
 const LABELS = Object.freeze({
   sv: Object.freeze({
-    title: "Bokföringsgranskning",
+    title: "Bokföringsrapport",
     proposal: "Förslag",
     needs_input: "Behöver svar",
     out_of_scope: "Utanför stöd",
@@ -24,22 +24,30 @@ const LABELS = Object.freeze({
     period: "Period",
     run: "Körning",
     recorded: "Registrerad",
+    created: "Skapad",
+    version: "version",
+    through: "Till och med",
     summary: "Sammanfattning",
     notices: "Frågor, varningar och orsaker",
     questions: "Frågor",
     warnings: "Varningar",
     reasons: "Orsaker",
     core: "Företagsuppgifter",
+    coreChanges: "Ändrade företagsuppgifter",
     transactions: "Bokföringstransaktioner",
-    openItems: "Öppna betalningsposter",
+    openItems: "Öppna poster",
     openItemChanges: "Förändringar",
     closingOpenItems: "Kvarstående poster",
+    noOpenItemsAtPeriodEnd: "Inga öppna poster vid periodens slut.",
     balances: "Kontosaldon",
     verification: "Verifikationsserie",
+    verificationSingular: "verifikation",
+    verificationPlural: "verifikationer",
     reconciliations: "Avstämningar",
     vat: "Moms",
     evidence: "Underlag",
-    provenance: "Proveniens",
+    provenance: "Debug",
+    showDebug: "Visa",
     none: "Inga.",
     sourceId: "Käll-ID",
     description: "Beskrivning",
@@ -74,6 +82,9 @@ const LABELS = Object.freeze({
     no: "Nej",
     quarterly: "Kvartalsvis",
     declarationBoxes: "Deklarationsrutor",
+    noVatActivity: "Ingen ingående eller utgående moms bokfördes i perioden.",
+    vatPeriodMembership: "Perioden ingår i momsperioden",
+    noVatReturnDue: "ingen momsredovisning förfaller i",
     series: "Serie",
     lastNumberOpening: "Föregående nummer",
     lastNumberClosing: "Sista nummer",
@@ -82,7 +93,7 @@ const LABELS = Object.freeze({
     previewNotice: "Detta är ett förslag. Ingenting har godkänts, bokförts, betalats, deklarerats eller skickats in.",
   }),
   en: Object.freeze({
-    title: "Bookkeeping review",
+    title: "Bookkeeping report",
     proposal: "Proposal",
     needs_input: "Needs input",
     out_of_scope: "Out of scope",
@@ -92,22 +103,30 @@ const LABELS = Object.freeze({
     period: "Period",
     run: "Run",
     recorded: "Recorded",
+    created: "Created",
+    version: "version",
+    through: "Through",
     summary: "Summary",
     notices: "Questions, warnings, and reasons",
     questions: "Questions",
     warnings: "Warnings",
     reasons: "Reasons",
     core: "Company facts",
+    coreChanges: "Company information changes",
     transactions: "Bookkeeping transactions",
     openItems: "Open items",
     openItemChanges: "Changes",
     closingOpenItems: "Closing items",
+    noOpenItemsAtPeriodEnd: "No open items at the end of the period.",
     balances: "Account balances",
     verification: "Verification series",
+    verificationSingular: "entry",
+    verificationPlural: "entries",
     reconciliations: "Reconciliations",
     vat: "VAT",
     evidence: "Evidence",
-    provenance: "Provenance",
+    provenance: "Debug",
+    showDebug: "Show",
     none: "None.",
     sourceId: "Source ID",
     description: "Description",
@@ -142,6 +161,9 @@ const LABELS = Object.freeze({
     no: "No",
     quarterly: "Quarterly",
     declarationBoxes: "Declaration boxes",
+    noVatActivity: "No input or output VAT was posted in the period.",
+    vatPeriodMembership: "The period is part of the VAT period",
+    noVatReturnDue: "no VAT return is due in",
     series: "Series",
     lastNumberOpening: "Previous number",
     lastNumberClosing: "Last number",
@@ -214,10 +236,15 @@ export function buildReviewModel(snapshot) {
   const reconciliations = proposal ? (bookkeeping.reconciliations ?? []).map((item) => ({ ...item })) : [];
   const vat = proposal ? {
     ...bookkeeping.vat_period,
+    hasActivity: hasVatActivity(bookkeeping),
     frequencyDisplay: labels[bookkeeping.vat_period.frequency],
     reportingPeriod: bookkeeping.vat_period.cycle_start && bookkeeping.vat_period.cycle_end
       ? `${bookkeeping.vat_period.cycle_start} – ${bookkeeping.vat_period.cycle_end}`
       : labels.none,
+    reportingPeriodDisplay: bookkeeping.vat_period.cycle_start && bookkeeping.vat_period.cycle_end
+      ? formatPeriodCoverage({ start: bookkeeping.vat_period.cycle_start, end: bookkeeping.vat_period.cycle_end }, source.language, labels)
+      : labels.none,
+    reportMonthDisplay: formatMonthYear(source.context.period.end, source.language),
     dueDisplay: bookkeeping.vat_period.due_in_period ? labels.yes : labels.no,
     inputAccountsDisplay: bookkeeping.vat_period.input_accounts.join(", "),
     outputAccountsDisplay: bookkeeping.vat_period.output_accounts.join(", "),
@@ -225,19 +252,41 @@ export function buildReviewModel(snapshot) {
   } : null;
   const evidence = (outcome.evidence ?? []).map((item) => ({ label: evidenceLabel(item), value: stableDisplay(item) }));
   const provenance = flattenValues(outcome.provenance ?? {});
+  const company = {
+    id: source.context.company_id,
+    name: organization.name ?? source.context.company_id,
+    organizationNumber: organization.organization_number ?? null,
+    display: organization.organization_number
+      ? `${organization.name ?? source.context.company_id} (${organization.organization_number})`
+      : organization.name ?? source.context.company_id,
+  };
+  const period = {
+    ...source.context.period,
+    display: source.context.period.start
+      ? `${source.context.period.id}: ${source.context.period.start} – ${source.context.period.end}`
+      : `${source.context.period.id}: – ${source.context.period.end}`,
+    coverageDisplay: formatPeriodCoverage(source.context.period, source.language, labels),
+  };
+  const createdDisplay = formatDisplayDate(new Date(source.recorded_at).toISOString().slice(0, 10), source.language);
+  const statusDisplay = reportStatusDisplay(source, outcome, labels);
+  const header = {
+    identity: [company.name, company.organizationNumber, `${labels.created} ${createdDisplay}`].filter(Boolean).join(" · "),
+    context: `${period.coverageDisplay} · ${statusDisplay}`,
+  };
+  const noticeGroups = [
+    { id: "questions", title: labels.questions, items: questions },
+    { id: "warnings", title: labels.warnings, items: warnings },
+    { id: "reasons", title: labels.reasons, items: reasons },
+  ].filter((group) => group.items.length);
   const sections = [
     { id: "summary", kind: "paragraph", title: labels.summary, value: review.summary, emptyText: labels.none },
-    {
+    ...(noticeGroups.length ? [{
       id: "notices",
       kind: "notices",
       title: labels.notices,
-      groups: [
-        { id: "questions", title: labels.questions, items: questions },
-        { id: "warnings", title: labels.warnings, items: warnings },
-        { id: "reasons", title: labels.reasons, items: reasons },
-      ].filter((group) => group.items.length),
+      groups: noticeGroups,
       emptyText: labels.none,
-    },
+    }] : []),
     { id: "core", kind: "key_values", title: labels.core, rows: coreChanges, emptyText: labels.none },
     { id: "transactions", kind: "transactions", title: labels.transactions, items: transactions, emptyText: labels.none },
     {
@@ -255,7 +304,7 @@ export function buildReviewModel(snapshot) {
     { id: "reconciliations", kind: "reconciliations", title: labels.reconciliations, items: reconciliations, emptyText: labels.none },
     { id: "vat", kind: "vat", title: labels.vat, value: vat, emptyText: labels.none },
     { id: "evidence", kind: "simple_rows", title: labels.evidence, rows: evidence, emptyText: labels.none },
-    { id: "provenance", kind: "key_values", title: labels.provenance, rows: provenance, emptyText: labels.none },
+    { id: "provenance", kind: "preformatted", title: labels.provenance, value: prettyCanonicalJson(outcome.provenance ?? {}) },
   ];
 
   return Object.freeze({
@@ -267,20 +316,10 @@ export function buildReviewModel(snapshot) {
     approvalStatus: source.approval_status,
     approvalLabel: labels[source.approval_status],
     previewNotice: source.approval_status === "preliminary" ? labels.previewNotice : null,
-    company: {
-      id: source.context.company_id,
-      name: organization.name ?? source.context.company_id,
-      organizationNumber: organization.organization_number ?? null,
-      display: organization.organization_number
-        ? `${organization.name ?? source.context.company_id} (${organization.organization_number})`
-        : organization.name ?? source.context.company_id,
-    },
-    period: {
-      ...source.context.period,
-      display: source.context.period.start
-        ? `${source.context.period.id}: ${source.context.period.start} – ${source.context.period.end}`
-        : `${source.context.period.id}: – ${source.context.period.end}`,
-    },
+    statusDisplay,
+    header,
+    company,
+    period,
     run: { ref: source.run_ref, digest: source.run_ref.sha256, recordedAt: source.recorded_at },
     summary: review.summary,
     narrativeSource: review.narrative_source,
@@ -300,6 +339,58 @@ export function buildReviewModel(snapshot) {
     sections,
     sourceDigest: snapshot.ref.sha256,
   });
+}
+
+const MONTHS = Object.freeze({
+  sv: Object.freeze(["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"]),
+  en: Object.freeze(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]),
+});
+
+function formatPeriodCoverage(period, language, labels) {
+  const end = dateParts(period.end);
+  if (!period.start) return `${labels.through} ${formatDateParts(end, language)}`;
+  const start = dateParts(period.start);
+  if (start.year === end.year && start.month === end.month) {
+    return `${start.day}–${end.day} ${MONTHS[language][end.month - 1]} ${end.year}`;
+  }
+  if (start.year === end.year) {
+    return `${start.day} ${MONTHS[language][start.month - 1]}–${formatDateParts(end, language)}`;
+  }
+  return `${formatDateParts(start, language)}–${formatDateParts(end, language)}`;
+}
+
+function formatDisplayDate(value, language) {
+  return formatDateParts(dateParts(value), language);
+}
+
+function formatMonthYear(value, language) {
+  const parts = dateParts(value);
+  return `${MONTHS[language][parts.month - 1]} ${parts.year}`;
+}
+
+function formatDateParts(value, language) {
+  return `${value.day} ${MONTHS[language][value.month - 1]} ${value.year}`;
+}
+
+function dateParts(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) throw new TypeError(`Invalid report date ${String(value)}`);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw new TypeError(`Invalid report date ${value}`);
+  }
+  return { year, month, day };
+}
+
+function reportStatusDisplay(source, outcome, labels) {
+  if (source.approval_status !== "approved") return labels[outcome.kind];
+  const version = source.run_ref.version;
+  return Number.isInteger(version) && version > 0
+    ? `${labels.approved} ${labels.version} ${version}`
+    : labels.approved;
 }
 
 function validateProposal(outcome, bookkeeping, delta, projected, context) {
@@ -508,6 +599,14 @@ function buildVerification(bookkeeping, delta) {
     ? delta.imported_verification_series?.last_number ?? closing.last_number
     : closing.last_number - count;
   return { series: closing.series, openingLastNumber: opening, closingLastNumber: closing.last_number };
+}
+
+function hasVatActivity(bookkeeping) {
+  const vat = bookkeeping.vat_period;
+  const accounts = new Set([...vat.input_accounts, ...vat.output_accounts]);
+  return bookkeeping.ledger.transactions.some((transaction) => transaction.lines.some((line) =>
+    accounts.has(line.account)
+      && (money(line.debit, bookkeeping.ledger.currency) !== 0n || money(line.credit, bookkeeping.ledger.currency) !== 0n)));
 }
 
 function normalizeNotices(items, textKey, labels) {

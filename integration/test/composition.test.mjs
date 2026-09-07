@@ -132,7 +132,7 @@ test("the public modules compose through an approved Payroll-to-Bookkeeping hand
   const reviewBundle = await Artifacts.render(bookkeepingApproval.output_snapshot, "review-html-v1");
   assert.equal(reviewBundle.payload.language, "en");
   const reviewHtml = Buffer.from(reviewBundle.payload.artifacts[0].content_base64, "base64").toString("utf8");
-  assert.match(reviewHtml, /<h1>Bookkeeping review/);
+  assert.match(reviewHtml, /<h1>Bookkeeping report/);
   assert.match(reviewHtml, /Payroll 2026-05/);
   assert.match(reviewHtml, /7010/);
   const payslipBundle = await Artifacts.render(payrollApproval.output_snapshot, "payslips-pdf-v1");

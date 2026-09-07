@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<title>Bokföringsrapport – 2026-05</title>
+<style>:root { color-scheme: light; font-family: Arial, Helvetica, sans-serif; color: #172126; background: #fff; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 70rem; margin: 0 auto; padding: 2rem; }
+h1 { margin: 1.4rem 0 .85rem; font-size: 1.8rem; }
+h2 { margin: 2rem 0 .75rem; padding-bottom: .35rem; border-bottom: 2px solid #006aa7; font-size: 1.15rem; }
+h3 { margin: 1rem 0 .5rem; font-size: 1rem; }
+p { line-height: 1.5; }
+.document-meta { margin: 0; color: #5b6870; font-size: .85rem; }
+.report-context { margin: 0; font-size: .95rem; font-weight: 400; }
+.section-meta { margin: 0 0 .75rem; color: #5b6870; font-size: .9rem; }
+.report-summary { margin: 2rem 0; }
+.report-summary p { margin: 0; }
+.notice { padding: .8rem 1rem; border-left: .3rem solid #fecc00; background: #fffaf0; }
+.meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem 1rem; margin: 1rem 0; }
+.meta dt { color: #5b6870; }
+.meta dd { margin: 0; overflow-wrap: anywhere; }
+.empty { color: #69767d; font-style: italic; }
+.list { margin: .5rem 0; padding-left: 1.4rem; }
+details { margin: .7rem 0; border: 1px solid #d6dde1; border-radius: .35rem; }
+summary { display: grid; grid-template-columns: 6rem 6.5rem minmax(10rem,1fr) max-content; gap: .75rem; padding: .8rem; cursor: pointer; align-items: baseline; }
+summary strong { font-variant-numeric: tabular-nums; }
+.detail { padding: 0 .8rem .8rem; }
+table { width: 100%; border-collapse: collapse; margin: .5rem 0 1rem; font-size: .9rem; }
+th, td { padding: .45rem .5rem; border-bottom: 1px solid #dce2e5; text-align: left; vertical-align: top; }
+th { background: #f3f6f7; font-weight: 700; }
+.money { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .86em; overflow-wrap: anywhere; }
+.debug-details { margin: 0; border: 0; border-radius: 0; color: #5b6870; }
+.debug-details > summary { display: list-item; width: max-content; padding: 0; color: #5b6870; font-size: .8rem; }
+.debug-details[open] > summary { margin-bottom: .5rem; }
+.debug { margin: .5rem 0 1rem; padding: .8rem; overflow-x: auto; background: #f3f6f7; font: .8rem/1.45 "SFMono-Regular", Consolas, monospace; }
+.footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #d6dde1; color: #5b6870; font-size: .8rem; }
+@media (max-width: 700px) {
+  main { padding: 1rem; }
+  summary { grid-template-columns: 4.5rem 5.5rem minmax(0,1fr); }
+  summary .amount { grid-column: 2 / -1; }
+  .table-wrap { overflow-x: auto; }
+}
+</style>
+</head>
+<body><main>
+<header>
+  <p class="document-meta">Fiktiv AB · 559999-0008 · Skapad 6 september 2026</p>
+  <h1>Bokföringsrapport – 2026-05</h1>
+  <p class="report-context">12–31 maj 2026 · Godkänd version 1</p>
+  
+</header>
+<section class="report-summary"><p>Förslag till bokföring för maj 2026: leverantörsfaktura, aktiekapital, bankavgift och dokumenterade testtransaktioner har sammanställts. Företagskontots utgående saldo stämmer med kontoutdraget.</p></section><section><h2>Bokföringstransaktioner</h2><p class="section-meta">Verifikationsserie A · A1–A6 · 6 verifikationer</p><details>
+<summary><strong>A1</strong><span>2026-05-12</span><span>Faktura 130989 bokförs med 2 800 kr ej avdragsgilla och 6 495 kr avdragsgilla kostnader mot leverantörsskuld; fakturan är ej momspliktig.</span><span class="amount money">9 295,00 kr</span></summary>
+<div class="detail">
+<dl class="meta"><dt>Käll-ID</dt><dd>260512-1-faktura-130989</dd><dt>Beskrivning</dt><dd>Faktura 130989 – Bolagsverkets avgift för bildandet och ändringsanmälan</dd><dt>Underlag</dt><dd>fiktiv-ab:document:000002, fiktiv-ab:document:000003</dd></dl>
+<div class="table-wrap"><table><thead><tr><th>Konto</th><th>Kontonamn</th><th class="money">Debet</th><th class="money">Kredit</th></tr></thead><tbody>
+<tr><td><code>6992</code></td><td>Övriga externa kostnader, ej avdragsgilla</td><td class="money">2 400,00</td><td class="money">0,00</td></tr><tr><td><code>6992</code></td><td>Övriga externa kostnader, ej avdragsgilla</td><td class="money">400,00</td><td class="money">0,00</td></tr><tr><td><code>6991</code></td><td>Övriga externa kostnader, avdragsgilla</td><td class="money">2 200,00</td><td class="money">0,00</td></tr><tr><td><code>6991</code></td><td>Övriga externa kostnader, avdragsgilla</td><td class="money">4 295,00</td><td class="money">0,00</td></tr><tr><td><code>2440</code></td><td>Leverantörsskulder</td><td class="money">0,00</td><td class="money">9 295,00</td></tr>
+</tbody></table></div></div></details><details>
+<summary><strong>A2</strong><span>2026-05-22</span><span>25 000 kr bokförs som insatt aktiekapital på företagskontot mot konto 2081.</span><span class="amount money">25 000,00 kr</span></summary>
+<div class="detail">
+<dl class="meta"><dt>Käll-ID</dt><dd>260522-1-aktiekapital-B022</dd><dt>Beskrivning</dt><dd>Aktiekapitalet betalades av FILIPPA STARK till bolagets grundkonto och överfördes till bolagets företagskonto.</dd><dt>Underlag</dt><dd>fiktiv-ab:document:000004, fiktiv-ab:document:000008</dd></dl>
+<div class="table-wrap"><table><thead><tr><th>Konto</th><th>Kontonamn</th><th class="money">Debet</th><th class="money">Kredit</th></tr></thead><tbody>
+<tr><td><code>1930</code></td><td>Företagskonto</td><td class="money">25 000,00</td><td class="money">0,00</td></tr><tr><td><code>2081</code></td><td>Aktiekapital</td><td class="money">0,00</td><td class="money">25 000,00</td></tr>
+</tbody></table></div></div></details><details>
+<summary><strong>A3</strong><span>2026-05-22</span><span>SEB:s startavgift på 2 500 kr bokförs som bankkostnad och utbetalning från företagskontot.</span><span class="amount money">2 500,00 kr</span></summary>
+<div class="detail">
+<dl class="meta"><dt>Käll-ID</dt><dd>260522-2-seb-startavgift</dd><dt>Beskrivning</dt><dd>AVGIFT</dd><dt>Underlag</dt><dd>fiktiv-ab:document:000005, fiktiv-ab:document:000008</dd></dl>
+<div class="table-wrap"><table><thead><tr><th>Konto</th><th>Kontonamn</th><th class="money">Debet</th><th class="money">Kredit</th></tr></thead><tbody>
+<tr><td><code>6570</code></td><td>Bankkostnader</td><td class="money">2 500,00</td><td class="money">0,00</td></tr><tr><td><code>1930</code></td><td>Företagskonto</td><td class="money">0,00</td><td class="money">2 500,00</td></tr>
+</tbody></table></div></div></details><details>
+<summary><strong>A4</strong><span>2026-05-25</span><span>Testinsättningen på 1 kr från Fillipa Stark bokförs som tillfällig skuld till närstående och insättning på företagskontot.</span><span class="amount money">1,00 kr</span></summary>
+<div class="detail">
+<dl class="meta"><dt>Käll-ID</dt><dd>260525-1-testinsättning</dd><dt>Beskrivning</dt><dd>Test av det nya företagskontot – insättning från Fillipa Stark</dd><dt>Underlag</dt><dd>fiktiv-ab:document:000006, fiktiv-ab:document:000008</dd></dl>
+<div class="table-wrap"><table><thead><tr><th>Konto</th><th>Kontonamn</th><th class="money">Debet</th><th class="money">Kredit</th></tr></thead><tbody>
+<tr><td><code>1930</code></td><td>Företagskonto</td><td class="money">1,00</td><td class="money">0,00</td></tr><tr><td><code>2893</code></td><td>Skulder till närstående personer, kortfristig del</td><td class="money">0,00</td><td class="money">1,00</td></tr>
+</tbody></table></div></div></details><details>
+<summary><strong>A5</strong><span>2026-05-25</span><span>Återbetalningen på 1 kr till Fillipa Stark bokförs mot den tillfälliga skulden och företagskontot.</span><span class="amount money">1,00 kr</span></summary>
+<div class="detail">
+<dl class="meta"><dt>Käll-ID</dt><dd>260525-1-teståterbetalning</dd><dt>Beskrivning</dt><dd>Test av det nya företagskontot – återbetalning till Fillipa Stark</dd><dt>Underlag</dt><dd>fiktiv-ab:document:000006, fiktiv-ab:document:000008</dd></dl>
+<div class="table-wrap"><table><thead><tr><th>Konto</th><th>Kontonamn</th><th class="money">Debet</th><th class="money">Kredit</th></tr></thead><tbody>
+<tr><td><code>2893</code></td><td>Skulder till närstående personer, kortfristig del</td><td class="money">1,00</td><td class="money">0,00</td></tr><tr><td><code>1930</code></td><td>Företagskonto</td><td class="money">0,00</td><td class="money">1,00</td></tr>
+</tbody></table></div></div></details><details>
+<summary><strong>A6</strong><span>2026-05-26</span><span>Bankgirotestets insättning på 2 kr, daterad enligt rättelsen till 2026-05-26, bokförs som tillfällig skuld till närstående.</span><span class="amount money">2,00 kr</span></summary>
+<div class="detail">
+<dl class="meta"><dt>Käll-ID</dt><dd>260526-1-bankgirotest</dd><dt>Beskrivning</dt><dd>Bankgirotest</dd><dt>Underlag</dt><dd>fiktiv-ab:document:000007, fiktiv-ab:document:000008, fiktiv-ab:document:000009</dd></dl>
+<div class="table-wrap"><table><thead><tr><th>Konto</th><th>Kontonamn</th><th class="money">Debet</th><th class="money">Kredit</th></tr></thead><tbody>
+<tr><td><code>1930</code></td><td>Företagskonto</td><td class="money">2,00</td><td class="money">0,00</td></tr><tr><td><code>2893</code></td><td>Skulder till närstående personer, kortfristig del</td><td class="money">0,00</td><td class="money">2,00</td></tr>
+</tbody></table></div></div></details></section><section><h2>Öppna poster</h2><p>Inga öppna poster vid periodens slut.</p></section><section><h2>Kontosaldon</h2><div class="table-wrap"><table><thead><tr><th>Konto</th><th>Kontonamn</th><th class="money">Ingående</th><th class="money">Period debet</th><th class="money">Period kredit</th><th class="money">Utgående</th></tr></thead><tbody><tr><td>1930</td><td>Företagskonto</td><td class="money">0,00</td><td class="money">22 502,00</td><td class="money">0,00</td><td class="money">22 502,00</td></tr><tr><td>2081</td><td>Aktiekapital</td><td class="money">0,00</td><td class="money">0,00</td><td class="money">25 000,00</td><td class="money">-25 000,00</td></tr><tr><td>2440</td><td>Leverantörsskulder</td><td class="money">0,00</td><td class="money">0,00</td><td class="money">9 295,00</td><td class="money">-9 295,00</td></tr><tr><td>2893</td><td>Skulder till närstående personer, kortfristig del</td><td class="money">0,00</td><td class="money">0,00</td><td class="money">2,00</td><td class="money">-2,00</td></tr><tr><td>6570</td><td>Bankkostnader</td><td class="money">0,00</td><td class="money">2 500,00</td><td class="money">0,00</td><td class="money">2 500,00</td></tr><tr><td>6991</td><td>Övriga externa kostnader, avdragsgilla</td><td class="money">0,00</td><td class="money">6 495,00</td><td class="money">0,00</td><td class="money">6 495,00</td></tr><tr><td>6992</td><td>Övriga externa kostnader, ej avdragsgilla</td><td class="money">0,00</td><td class="money">2 800,00</td><td class="money">0,00</td><td class="money">2 800,00</td></tr></tbody></table></div></section><section><h2>Avstämningar</h2><div class="table-wrap"><table><thead><tr><th>Konto</th><th>Status</th><th class="money">Bokfört saldo</th><th class="money">Externt saldo</th><th>Underlag</th></tr></thead><tbody><tr><td>1930</td><td>reconciled</td><td class="money">22 502,00 kr</td><td class="money">22 502,00 kr</td><td>fiktiv-ab:document:000008</td></tr></tbody></table></div></section><section><h2>Moms</h2><p>Ingen ingående eller utgående moms bokfördes i perioden. Perioden ingår i momsperioden 1 april–30 juni 2026; ingen momsredovisning förfaller i maj 2026.</p></section><section><h2>Debug</h2><details class="debug-details"><summary>Visa</summary><pre class="debug">{
+  &quot;candidate_sha256&quot;: &quot;f6893fdbe6cea95247eeaf9be191966a5d246cae461cde7d75ecbecad0c96198&quot;,
+  &quot;canonical_json_profile&quot;: &quot;bergbok-canonical-json-v1&quot;,
+  &quot;duration_ms&quot;: 45190,
+  &quot;execution&quot;: &quot;ai_assessed_deterministically_validated&quot;,
+  &quot;model&quot;: &quot;gpt-5.6-luna&quot;,
+  &quot;model_calls&quot;: 5,
+  &quot;module_id&quot;: &quot;se.bergbok.bookkeeping&quot;,
+  &quot;module_version&quot;: &quot;4.0.0&quot;,
+  &quot;payroll_upstream_refs&quot;: [],
+  &quot;pricing&quot;: {
+    &quot;retrieved_at&quot;: &quot;2026-09-03&quot;,
+    &quot;source&quot;: &quot;https://developers.openai.com/api/docs/models&quot;,
+    &quot;value_is_estimate&quot;: true
+  },
+  &quot;provider&quot;: &quot;openai&quot;,
+  &quot;reasoning_effort&quot;: &quot;high&quot;,
+  &quot;side_effects&quot;: &quot;model_inference_only&quot;,
+  &quot;store&quot;: false,
+  &quot;tool_calls&quot;: 5,
+  &quot;usage&quot;: {
+    &quot;cached_input_tokens&quot;: 17990,
+    &quot;estimated_usd&quot;: 0.0080642,
+    &quot;input_tokens&quot;: 31048,
+    &quot;output_tokens&quot;: 4244
+  },
+  &quot;variant_ref&quot;: {
+    &quot;id&quot;: &quot;openai-gpt-5.6-luna-high-v3&quot;
+  },
+  &quot;worker_image&quot;: &quot;sha256:e12470d2d2c636097c95462c5d7bdfbf5d8957125044e5370dfd38ac48be334c&quot;,
+  &quot;worker_network&quot;: &quot;none&quot;,
+  &quot;worker_startup_ms&quot;: 160
+}
+</pre></details></section>
+<footer class="footer"><code>Run a38cede3fab3c3af4063ce32d23cbda16f89549658160d4e519f04a4e1ff4515</code><br><code>OutputSnapshot d88c75730c51d4d0c2a9e4363b616d089470f8aef2d4306136ac8e04f21f05bc</code></footer>
+</main></body></html>

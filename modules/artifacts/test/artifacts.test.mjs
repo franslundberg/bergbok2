@@ -5,7 +5,10 @@ import test from "node:test";
 
 import { consolidate } from "../../bookkeeping/src/index.mjs";
 import { render } from "../src/index.mjs";
+import { renderReviewHtml } from "../src/private/review/html.mjs";
+import { formatMoneyNumberDisplay } from "../src/private/review/money-format.mjs";
 import { buildReviewModel } from "../src/private/review/model.mjs";
+import { renderReviewPdf } from "../src/private/review/pdf.mjs";
 import { prettyCanonicalJson, sha256Bytes } from "../../../contracts/src/canonical.mjs";
 import { createContentRef, createModuleOutcome, createStateEnvelope, proposalDigest, sealContent, verifySealedContent } from "../../../contracts/src/index.mjs";
 
@@ -166,8 +169,10 @@ test("the representative review snapshot and artifacts match their golden hashes
 test("review JSON is exact and HTML is semantic, collapsed, escaped, and complete", async () => {
   const snapshot = await bookkeepingSnapshot();
   const model = buildReviewModel(snapshot);
+  assert.equal(model.header.identity, "Example Ångström AB · 559999-9999 · Created 31 March 2026");
+  assert.equal(model.header.context, "1–31 May 2026 · Proposal");
   assert.deepEqual(model.sections.map((section) => section.id), [
-    "summary", "notices", "core", "transactions", "open_items", "balances",
+    "summary", "core", "transactions", "open_items", "balances",
     "verification", "reconciliations", "vat", "evidence", "provenance",
   ]);
   const source = await render(snapshot, "review-source-json-v1");
@@ -175,19 +180,29 @@ test("review JSON is exact and HTML is semantic, collapsed, escaped, and complet
   const html = artifactBytes((await render(snapshot, "review-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.match(html, /<details>/);
   assert.doesNotMatch(html, /<details open/);
+  assert.match(html, /Example Ångström AB · 559999-9999 · Created 31 March 2026/);
+  assert.match(html, /1–31 May 2026 · Proposal/);
   assert.match(html, /Coffee &amp; supplies/);
   assert.match(html, /7690/);
-  assert.match(html, /25\.00 SEK/);
-  assert.match(html, /Quarterly/);
-  assert.match(html, /2641/);
-  assert.match(html, /2611/);
-  assert.match(html, /2650/);
+  assert.match(html, /SEK\u00a025\.00/);
+  assert.doesNotMatch(html, /25\.00 SEK/);
+  assert.match(html, /<td>2081<\/td><td>Share capital<\/td><td class="money">-500\.00<\/td>.*<td class="money">-500\.00<\/td>/);
+  assert.match(html, /<td><code>7690<\/code><\/td><td>Other personnel costs<\/td><td class="money">25\.00<\/td><td class="money">0\.00<\/td>/);
+  assert.doesNotMatch(html, /SEK\u00a0[\d,.]+ (Debit|Credit)/);
+  assert.match(html, /Verification series A · A8 · 1 entry/);
+  assert.match(html, /No input or output VAT was posted in the period\. The period is part of the VAT period 1 April–30 June 2026; no VAT return is due in May 2026\./);
+  assert.doesNotMatch(html, /Quarterly|2641|2611|2650/);
   assert.match(html, /Content-Security-Policy/);
   assert.doesNotMatch(html, /<script/i);
+  assert.doesNotMatch(html, /Questions, warnings, and reasons/);
+  assert.doesNotMatch(html, /Company facts/);
+  assert.doesNotMatch(html, /Company information changes/);
+  assert.doesNotMatch(html, />Evidence<\/h2>/);
+  assert.doesNotMatch(html, /<h2>Summary<\/h2>/);
+  assert.match(html, /<section class="report-summary"><p>1 balanced transactions are proposed/);
   const headings = [
-    "Summary", "Questions, warnings, and reasons", "Company facts",
     "Bookkeeping transactions", "Open items", "Account balances",
-    "Verification series", "Reconciliations", "VAT", "Evidence", "Provenance",
+    "Reconciliations", "VAT", "Debug",
   ];
   let previousIndex = -1;
   for (const heading of headings) {
@@ -195,6 +210,18 @@ test("review JSON is exact and HTML is semantic, collapsed, escaped, and complet
     assert.ok(index > previousIndex, `${heading} must occur in canonical section order`);
     previousIndex = index;
   }
+  assert.match(html, /<section><h2>Debug<\/h2><details class="debug-details"><summary>Show<\/summary><pre class="debug">\{/);
+  assert.doesNotMatch(html, /<details class="debug-details" open/);
+  assert.match(html, /&quot;module_id&quot;: &quot;se\.bergbok\.bookkeeping&quot;/);
+
+  const htmlWithCompanyChange = renderReviewHtml({
+    ...model,
+    sections: model.sections.map((section) => section.id === "core"
+      ? { ...section, rows: [{ path: "organization.name", value: "Changed AB" }] }
+      : section),
+  });
+  assert.match(htmlWithCompanyChange, /<h2>Company information changes<\/h2>/);
+  assert.doesNotMatch(htmlWithCompanyChange, /<h2>Company facts<\/h2>/);
 
   const hostile = structuredClone(snapshot.payload);
   hostile.outcome.canonical_outputs.bookkeeping.ledger.transactions[0].description = '<img src=x onerror="alert(1)">';
@@ -206,35 +233,70 @@ test("review JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.doesNotMatch(hostileHtml, /<img src=x/);
 });
 
-test("the PDF contains the complete expanded review with Unicode text", async () => {
+test("the PDF contains the reader-facing review with Unicode text", async () => {
   const snapshot = await bookkeepingSnapshot();
   const model = buildReviewModel(snapshot);
   const bytes = artifactBytes((await render(snapshot, "review-pdf-v1")).payload.artifacts[0]);
   assert.match(bytes.subarray(0, 8).toString("latin1"), /^%PDF-/);
   const text = await pdfText(bytes);
+  const normalizedText = text.replaceAll("\u00a0", " ");
+  const compactText = normalizedText.replace(/\s+/g, " ");
   assert.match(text, /Example Ångström AB/);
+  assert.match(text, /Created 31 March 2026/);
+  assert.match(text, /1–31 May 2026 · Proposal/);
   assert.match(text, /Coffee & supplies/);
   assert.match(text, /Other personnel costs/);
   assert.match(text, /supplier:coffee/);
   assert.match(text, /1930/);
-  assert.match(text, /Quarterly/);
-  assert.match(text, /2026-04-01/);
-  assert.match(text, /2026-06-30/);
+  assert.match(text, /Verification series A · A8 · 1 entry/);
+  assert.match(compactText, /No input or output VAT was posted in the period\. The period is part of the VAT period 1 April–30 June 2026; no VAT return is due in May 2026\./);
+  assert.doesNotMatch(text, /Quarterly|2026-04-01|2026-06-30|2641|2611|2650/);
+  assert.doesNotMatch(text, /^Summary$/m);
+  assert.doesNotMatch(text, /^Company facts$/m);
+  assert.doesNotMatch(text, /^Debug$/m);
+  assert.doesNotMatch(text, /"module_id": "se\.bergbok\.bookkeeping"/);
+  assert.match(text, /SEK\s25\.00/);
+  assert.doesNotMatch(text, /25\.00 SEK/);
   for (const label of [
-    model.labels.summary, model.labels.notices, model.labels.core,
     model.labels.transactions, model.labels.openItems, model.labels.balances,
-    model.labels.verification, model.labels.reconciliations, model.labels.vat,
-    model.labels.evidence, model.labels.provenance,
+    model.labels.reconciliations, model.labels.vat,
   ]) assert.ok(text.includes(label), `PDF must contain ${label}`);
   for (const transaction of model.transactions) {
     assert.ok(text.includes(transaction.sourceId));
     assert.ok(text.includes(transaction.summary));
     for (const line of transaction.lines) {
       assert.ok(text.includes(line.account));
-      assert.ok(text.includes(line.debit));
-      assert.ok(text.includes(line.credit));
+      assert.ok(normalizedText.includes(formatMoneyNumberDisplay(line.debit, "en")));
+      assert.ok(normalizedText.includes(formatMoneyNumberDisplay(line.credit, "en")));
     }
   }
+  assert.match(compactText, /2081 Share capital -500\.00 0\.00 0\.00 -500\.00/);
+  assert.match(compactText, /7690 Other personnel costs 25\.00 0\.00/);
+  const suppressedSectionText = await pdfText(await renderReviewPdf({
+    ...model,
+    sections: model.sections.map((section) => section.id === "evidence"
+      ? { ...section, title: "STANDALONE EVIDENCE SECTION" }
+      : section.id === "provenance"
+        ? { ...section, title: "STANDALONE DEBUG SECTION", value: "DEBUG-ONLY-MARKER" }
+        : section),
+  }));
+  assert.doesNotMatch(suppressedSectionText, /STANDALONE EVIDENCE SECTION|STANDALONE DEBUG SECTION|DEBUG-ONLY-MARKER/);
+  const swedishBytes = artifactBytes((await render(await bookkeepingSnapshot("approved", "sv"), "review-pdf-v1")).payload.artifacts[0]);
+  const swedishText = await pdfText(swedishBytes);
+  const compactSwedishText = swedishText.replace(/\s+/g, " ");
+  assert.match(swedishText, /25,00\s*kr/);
+  assert.match(compactSwedishText, /7690 Other personnel costs 25,00 0,00/);
+
+  const emptyOpenItemsModel = {
+    ...model,
+    sections: model.sections.map((section) => section.id === "open_items"
+      ? { ...section, groups: section.groups.map((group) => ({ ...group, items: [] })) }
+      : section),
+  };
+  const emptyOpenItemsText = await pdfText(await renderReviewPdf(emptyOpenItemsModel));
+  assert.match(emptyOpenItemsText, /No open items at the end of the period\./);
+  assert.doesNotMatch(emptyOpenItemsText, /^Changes$/m);
+  assert.doesNotMatch(emptyOpenItemsText, /^Closing items$/m);
 });
 
 test("the review model fails closed on summary and State inconsistencies", async () => {
@@ -267,16 +329,60 @@ test("the review model fails closed on summary and State inconsistencies", async
   assert.throws(() => buildReviewModel(invalidStructure), /unreported fields: unreported_state/);
 });
 
-test("preliminary reports are marked and approved reports are not", async () => {
+test("unapproved reports are explicitly marked and approved reports are not", async () => {
   const preview = artifactBytes((await render(await bookkeepingSnapshot("preliminary", "sv"), "review-html-v1")).payload.artifacts[0]).toString("utf8");
-  assert.match(preview, /Förhandsvisning/);
-  assert.match(preview, /Kvartalsvis/);
+  assert.match(preview, /Example Ångström AB · 559999-9999 · Skapad 31 mars 2026/);
+  assert.match(preview, /1–31 maj 2026 · Förslag/);
+  assert.match(preview, /Ingenting har godkänts/);
+  assert.match(preview, /Ingen ingående eller utgående moms bokfördes i perioden/);
+  assert.doesNotMatch(preview, /Kvartalsvis/);
   const approved = artifactBytes((await render(await bookkeepingSnapshot("approved", "sv"), "review-html-v1")).payload.artifacts[0]).toString("utf8");
-  assert.doesNotMatch(approved, /Förhandsvisning/);
+  assert.match(approved, /1–31 maj 2026 · Godkänd version 1/);
+  assert.match(approved, /25,00\u00a0kr/);
+  assert.match(approved, /<section><h2>Debug<\/h2><details class="debug-details"><summary>Visa<\/summary>/);
+  assert.doesNotMatch(approved, /Ingenting har godkänts/);
+  assert.doesNotMatch(approved, /Frågor, varningar och orsaker/);
 });
 
 test("VAT artifacts use deterministic cycle dates from Bookkeeping v3", async () => {
   const source = await bookkeepingSnapshot("approved");
+  const reviewModel = buildReviewModel(source);
+  const reviewHtml = renderReviewHtml({
+    ...reviewModel,
+    sections: reviewModel.sections.map((section) => section.id === "vat"
+      ? {
+          ...section,
+          value: {
+            ...section.value,
+            hasActivity: true,
+            due_in_period: true,
+            closing_transaction_source_id: "vat-close:2026-Q2",
+            declaration_boxes: { "10": "25.00 SEK", "11": "0.00 SEK", "12": "0.00 SEK", "48": "0.00 SEK", "49": "25.00 SEK" },
+          },
+        }
+      : section),
+  });
+  assert.match(reviewHtml, /Reporting frequency/);
+  assert.match(reviewHtml, /Quarterly/);
+  assert.match(reviewHtml, /Declaration boxes/);
+  const reviewPdfText = await pdfText(await renderReviewPdf({
+    ...reviewModel,
+    sections: reviewModel.sections.map((section) => section.id === "vat"
+      ? {
+          ...section,
+          value: {
+            ...section.value,
+            hasActivity: true,
+            due_in_period: true,
+            closing_transaction_source_id: "vat-close:2026-Q2",
+            declaration_boxes: { "10": "25.00 SEK", "11": "0.00 SEK", "12": "0.00 SEK", "48": "0.00 SEK", "49": "25.00 SEK" },
+          },
+        }
+      : section),
+  }));
+  assert.match(reviewPdfText, /Reporting frequency/);
+  assert.match(reviewPdfText, /Quarterly/);
+  assert.match(reviewPdfText, /Declaration boxes/);
   const payload = structuredClone(source.payload);
   payload.outcome.canonical_outputs.bookkeeping.vat_period = {
     frequency: "quarterly",
@@ -306,8 +412,11 @@ test("needs-input and out-of-scope outcomes use the same complete review pipelin
   assert.equal(needsInput.questions[0].text, "Vilket belopp gäller?");
   assert.deepEqual(needsInput.transactions, []);
   const needsHtml = artifactBytes((await render(await classifiedSnapshot("needs_input"), "review-html-v1")).payload.artifacts[0]).toString("utf8");
+  assert.match(needsHtml, /Frågor, varningar och orsaker/);
   assert.match(needsHtml, /Vilket belopp gäller\?/);
   assert.match(needsHtml, /Bokföringstransaktioner<\/h2><p class="empty">Inga\.<\/p>/);
+  assert.match(needsHtml, /Öppna poster<\/h2><p>Inga öppna poster vid periodens slut\.<\/p>/);
+  assert.doesNotMatch(needsHtml, /Förändringar<\/h3>|Kvarstående poster<\/h3>/);
 
   const outside = buildReviewModel(await classifiedSnapshot("out_of_scope"));
   assert.equal(outside.outcomeKind, "out_of_scope");

@@ -1,0 +1,855 @@
+{
+  "payload": {
+    "approval_receipt_ref": {
+      "schema_id": "se.bergbok.approval-receipt",
+      "schema_version": "1.0",
+      "sha256": "6074f9c57317d9ee99d1bdb507d9f1003807a05ba6675a47f899821d4f5f0b20",
+      "stable_id": "fiktiv-ab:approval",
+      "version": 2
+    },
+    "approval_status": "approved",
+    "context": {
+      "company_id": "fiktiv-ab",
+      "docset_ref": {
+        "schema_id": "se.bergbok.docset",
+        "schema_version": "1.0",
+        "sha256": "866bb81a0ab12888767885b80d6e46e3f155938d873fcfebf51748e2bf07bbd4",
+        "stable_id": "fiktiv-ab:2026-05:docset",
+        "version": 8
+      },
+      "domain": "bookkeeping",
+      "period": {
+        "end": "2026-05-31",
+        "id": "2026-05",
+        "kind": "ordinary",
+        "start": "2026-05-12"
+      },
+      "previous_state_ref": {
+        "schema_id": "se.bergbok.state-envelope",
+        "schema_version": "1.0",
+        "sha256": "af821f2094d5da952b57a82744472113e01ff0d6901079b48ce89a7dff08434f",
+        "stable_id": "fiktiv-ab:state",
+        "version": 1
+      }
+    },
+    "contract_version": "2.0",
+    "language": "sv",
+    "outcome": {
+      "canonical_outputs": {
+        "bookkeeping": {
+          "company_id": "fiktiv-ab",
+          "generated_date": "2026-05-31",
+          "ledger": {
+            "closing_balances": [
+              {
+                "account": "1930",
+                "account_name": "Företagskonto",
+                "credit": "0.00 SEK",
+                "debit": "22502.00 SEK"
+              },
+              {
+                "account": "2081",
+                "account_name": "Aktiekapital",
+                "credit": "25000.00 SEK",
+                "debit": "0.00 SEK"
+              },
+              {
+                "account": "2440",
+                "account_name": "Leverantörsskulder",
+                "credit": "9295.00 SEK",
+                "debit": "0.00 SEK"
+              },
+              {
+                "account": "2893",
+                "account_name": "Skulder till närstående personer, kortfristig del",
+                "credit": "2.00 SEK",
+                "debit": "0.00 SEK"
+              },
+              {
+                "account": "6570",
+                "account_name": "Bankkostnader",
+                "credit": "0.00 SEK",
+                "debit": "2500.00 SEK"
+              },
+              {
+                "account": "6991",
+                "account_name": "Övriga externa kostnader, avdragsgilla",
+                "credit": "0.00 SEK",
+                "debit": "6495.00 SEK"
+              },
+              {
+                "account": "6992",
+                "account_name": "Övriga externa kostnader, ej avdragsgilla",
+                "credit": "0.00 SEK",
+                "debit": "2800.00 SEK"
+              }
+            ],
+            "currency": "SEK",
+            "opening_balances": [],
+            "totals": {
+              "credit": "36799.00 SEK",
+              "debit": "36799.00 SEK"
+            },
+            "transactions": [
+              {
+                "date": "2026-05-12",
+                "description": "Faktura 130989 – Bolagsverkets avgift för bildandet och ändringsanmälan",
+                "evidence_document_ids": [
+                  "fiktiv-ab:document:000002",
+                  "fiktiv-ab:document:000003"
+                ],
+                "lines": [
+                  {
+                    "account": "6992",
+                    "account_name": "Övriga externa kostnader, ej avdragsgilla",
+                    "credit": "0.00 SEK",
+                    "debit": "2400.00 SEK"
+                  },
+                  {
+                    "account": "6992",
+                    "account_name": "Övriga externa kostnader, ej avdragsgilla",
+                    "credit": "0.00 SEK",
+                    "debit": "400.00 SEK"
+                  },
+                  {
+                    "account": "6991",
+                    "account_name": "Övriga externa kostnader, avdragsgilla",
+                    "credit": "0.00 SEK",
+                    "debit": "2200.00 SEK"
+                  },
+                  {
+                    "account": "6991",
+                    "account_name": "Övriga externa kostnader, avdragsgilla",
+                    "credit": "0.00 SEK",
+                    "debit": "4295.00 SEK"
+                  },
+                  {
+                    "account": "2440",
+                    "account_name": "Leverantörsskulder",
+                    "credit": "9295.00 SEK",
+                    "debit": "0.00 SEK"
+                  }
+                ],
+                "origin": "bookkeeping_input",
+                "series": "A",
+                "source_id": "260512-1-faktura-130989",
+                "verification_id": "A1",
+                "verification_number": 1
+              },
+              {
+                "date": "2026-05-22",
+                "description": "Aktiekapitalet betalades av FILIPPA STARK till bolagets grundkonto och överfördes till bolagets företagskonto.",
+                "evidence_document_ids": [
+                  "fiktiv-ab:document:000004",
+                  "fiktiv-ab:document:000008"
+                ],
+                "lines": [
+                  {
+                    "account": "1930",
+                    "account_name": "Företagskonto",
+                    "credit": "0.00 SEK",
+                    "debit": "25000.00 SEK"
+                  },
+                  {
+                    "account": "2081",
+                    "account_name": "Aktiekapital",
+                    "credit": "25000.00 SEK",
+                    "debit": "0.00 SEK"
+                  }
+                ],
+                "origin": "bookkeeping_input",
+                "series": "A",
+                "source_id": "260522-1-aktiekapital-B022",
+                "verification_id": "A2",
+                "verification_number": 2
+              },
+              {
+                "date": "2026-05-22",
+                "description": "AVGIFT",
+                "evidence_document_ids": [
+                  "fiktiv-ab:document:000005",
+                  "fiktiv-ab:document:000008"
+                ],
+                "lines": [
+                  {
+                    "account": "6570",
+                    "account_name": "Bankkostnader",
+                    "credit": "0.00 SEK",
+                    "debit": "2500.00 SEK"
+                  },
+                  {
+                    "account": "1930",
+                    "account_name": "Företagskonto",
+                    "credit": "2500.00 SEK",
+                    "debit": "0.00 SEK"
+                  }
+                ],
+                "origin": "bookkeeping_input",
+                "series": "A",
+                "source_id": "260522-2-seb-startavgift",
+                "verification_id": "A3",
+                "verification_number": 3
+              },
+              {
+                "date": "2026-05-25",
+                "description": "Test av det nya företagskontot – insättning från Fillipa Stark",
+                "evidence_document_ids": [
+                  "fiktiv-ab:document:000006",
+                  "fiktiv-ab:document:000008"
+                ],
+                "lines": [
+                  {
+                    "account": "1930",
+                    "account_name": "Företagskonto",
+                    "credit": "0.00 SEK",
+                    "debit": "1.00 SEK"
+                  },
+                  {
+                    "account": "2893",
+                    "account_name": "Skulder till närstående personer, kortfristig del",
+                    "credit": "1.00 SEK",
+                    "debit": "0.00 SEK"
+                  }
+                ],
+                "origin": "bookkeeping_input",
+                "series": "A",
+                "source_id": "260525-1-testinsättning",
+                "verification_id": "A4",
+                "verification_number": 4
+              },
+              {
+                "date": "2026-05-25",
+                "description": "Test av det nya företagskontot – återbetalning till Fillipa Stark",
+                "evidence_document_ids": [
+                  "fiktiv-ab:document:000006",
+                  "fiktiv-ab:document:000008"
+                ],
+                "lines": [
+                  {
+                    "account": "2893",
+                    "account_name": "Skulder till närstående personer, kortfristig del",
+                    "credit": "0.00 SEK",
+                    "debit": "1.00 SEK"
+                  },
+                  {
+                    "account": "1930",
+                    "account_name": "Företagskonto",
+                    "credit": "1.00 SEK",
+                    "debit": "0.00 SEK"
+                  }
+                ],
+                "origin": "bookkeeping_input",
+                "series": "A",
+                "source_id": "260525-1-teståterbetalning",
+                "verification_id": "A5",
+                "verification_number": 5
+              },
+              {
+                "date": "2026-05-26",
+                "description": "Bankgirotest",
+                "evidence_document_ids": [
+                  "fiktiv-ab:document:000007",
+                  "fiktiv-ab:document:000008",
+                  "fiktiv-ab:document:000009"
+                ],
+                "lines": [
+                  {
+                    "account": "1930",
+                    "account_name": "Företagskonto",
+                    "credit": "0.00 SEK",
+                    "debit": "2.00 SEK"
+                  },
+                  {
+                    "account": "2893",
+                    "account_name": "Skulder till närstående personer, kortfristig del",
+                    "credit": "2.00 SEK",
+                    "debit": "0.00 SEK"
+                  }
+                ],
+                "origin": "bookkeeping_input",
+                "series": "A",
+                "source_id": "260526-1-bankgirotest",
+                "verification_id": "A6",
+                "verification_number": 6
+              }
+            ],
+            "verification_series": {
+              "last_number": 6,
+              "series": "A"
+            }
+          },
+          "open_items": {
+            "changes": [],
+            "closing": [],
+            "opening": [],
+            "totals": {
+              "by_kind": {},
+              "count": 0
+            }
+          },
+          "organization": {
+            "name": "Fiktiv AB",
+            "organization_number": "559999-0008"
+          },
+          "period_id": "2026-05",
+          "reconciliations": [
+            {
+              "account": "1930",
+              "evidence_document_ids": [
+                "fiktiv-ab:document:000008"
+              ],
+              "external_closing_balance": "22502.00 SEK",
+              "ledger_closing_balance": "22502.00 SEK",
+              "status": "reconciled"
+            }
+          ],
+          "schema_id": "se.bergbok.bookkeeping-output",
+          "schema_version": "3.0",
+          "vat_period": {
+            "closing_transaction_source_id": null,
+            "cycle_end": "2026-06-30",
+            "cycle_start": "2026-04-01",
+            "declaration_boxes": {},
+            "due_in_period": false,
+            "frequency": "quarterly",
+            "input_accounts": [
+              "2641"
+            ],
+            "output_accounts": [
+              "2611"
+            ],
+            "settlement_account": "2650",
+            "status": "not_due"
+          }
+        },
+        "period_delta": {
+          "company_id": "fiktiv-ab",
+          "currency": "SEK",
+          "mode": "ordinary",
+          "open_item_changes": [],
+          "opening_balances": [],
+          "period_id": "2026-05",
+          "reconciliations": [
+            {
+              "account": "1930",
+              "evidence_document_ids": [
+                "fiktiv-ab:document:000008"
+              ],
+              "external_closing_balance": "22502.00 SEK",
+              "ledger_closing_balance": "22502.00 SEK",
+              "status": "reconciled"
+            }
+          ],
+          "schema_id": "se.bergbok.bookkeeping-period-delta",
+          "schema_version": "3.0",
+          "totals": {
+            "credit": "36799.00 SEK",
+            "debit": "36799.00 SEK"
+          },
+          "transactions": [
+            {
+              "date": "2026-05-12",
+              "description": "Faktura 130989 – Bolagsverkets avgift för bildandet och ändringsanmälan",
+              "evidence_document_ids": [
+                "fiktiv-ab:document:000002",
+                "fiktiv-ab:document:000003"
+              ],
+              "lines": [
+                {
+                  "account": "6992",
+                  "account_name": "Övriga externa kostnader, ej avdragsgilla",
+                  "credit": "0.00 SEK",
+                  "debit": "2400.00 SEK"
+                },
+                {
+                  "account": "6992",
+                  "account_name": "Övriga externa kostnader, ej avdragsgilla",
+                  "credit": "0.00 SEK",
+                  "debit": "400.00 SEK"
+                },
+                {
+                  "account": "6991",
+                  "account_name": "Övriga externa kostnader, avdragsgilla",
+                  "credit": "0.00 SEK",
+                  "debit": "2200.00 SEK"
+                },
+                {
+                  "account": "6991",
+                  "account_name": "Övriga externa kostnader, avdragsgilla",
+                  "credit": "0.00 SEK",
+                  "debit": "4295.00 SEK"
+                },
+                {
+                  "account": "2440",
+                  "account_name": "Leverantörsskulder",
+                  "credit": "9295.00 SEK",
+                  "debit": "0.00 SEK"
+                }
+              ],
+              "origin": "bookkeeping_input",
+              "series": "A",
+              "source_id": "260512-1-faktura-130989",
+              "verification_id": "A1",
+              "verification_number": 1
+            },
+            {
+              "date": "2026-05-22",
+              "description": "Aktiekapitalet betalades av FILIPPA STARK till bolagets grundkonto och överfördes till bolagets företagskonto.",
+              "evidence_document_ids": [
+                "fiktiv-ab:document:000004",
+                "fiktiv-ab:document:000008"
+              ],
+              "lines": [
+                {
+                  "account": "1930",
+                  "account_name": "Företagskonto",
+                  "credit": "0.00 SEK",
+                  "debit": "25000.00 SEK"
+                },
+                {
+                  "account": "2081",
+                  "account_name": "Aktiekapital",
+                  "credit": "25000.00 SEK",
+                  "debit": "0.00 SEK"
+                }
+              ],
+              "origin": "bookkeeping_input",
+              "series": "A",
+              "source_id": "260522-1-aktiekapital-B022",
+              "verification_id": "A2",
+              "verification_number": 2
+            },
+            {
+              "date": "2026-05-22",
+              "description": "AVGIFT",
+              "evidence_document_ids": [
+                "fiktiv-ab:document:000005",
+                "fiktiv-ab:document:000008"
+              ],
+              "lines": [
+                {
+                  "account": "6570",
+                  "account_name": "Bankkostnader",
+                  "credit": "0.00 SEK",
+                  "debit": "2500.00 SEK"
+                },
+                {
+                  "account": "1930",
+                  "account_name": "Företagskonto",
+                  "credit": "2500.00 SEK",
+                  "debit": "0.00 SEK"
+                }
+              ],
+              "origin": "bookkeeping_input",
+              "series": "A",
+              "source_id": "260522-2-seb-startavgift",
+              "verification_id": "A3",
+              "verification_number": 3
+            },
+            {
+              "date": "2026-05-25",
+              "description": "Test av det nya företagskontot – insättning från Fillipa Stark",
+              "evidence_document_ids": [
+                "fiktiv-ab:document:000006",
+                "fiktiv-ab:document:000008"
+              ],
+              "lines": [
+                {
+                  "account": "1930",
+                  "account_name": "Företagskonto",
+                  "credit": "0.00 SEK",
+                  "debit": "1.00 SEK"
+                },
+                {
+                  "account": "2893",
+                  "account_name": "Skulder till närstående personer, kortfristig del",
+                  "credit": "1.00 SEK",
+                  "debit": "0.00 SEK"
+                }
+              ],
+              "origin": "bookkeeping_input",
+              "series": "A",
+              "source_id": "260525-1-testinsättning",
+              "verification_id": "A4",
+              "verification_number": 4
+            },
+            {
+              "date": "2026-05-25",
+              "description": "Test av det nya företagskontot – återbetalning till Fillipa Stark",
+              "evidence_document_ids": [
+                "fiktiv-ab:document:000006",
+                "fiktiv-ab:document:000008"
+              ],
+              "lines": [
+                {
+                  "account": "2893",
+                  "account_name": "Skulder till närstående personer, kortfristig del",
+                  "credit": "0.00 SEK",
+                  "debit": "1.00 SEK"
+                },
+                {
+                  "account": "1930",
+                  "account_name": "Företagskonto",
+                  "credit": "1.00 SEK",
+                  "debit": "0.00 SEK"
+                }
+              ],
+              "origin": "bookkeeping_input",
+              "series": "A",
+              "source_id": "260525-1-teståterbetalning",
+              "verification_id": "A5",
+              "verification_number": 5
+            },
+            {
+              "date": "2026-05-26",
+              "description": "Bankgirotest",
+              "evidence_document_ids": [
+                "fiktiv-ab:document:000007",
+                "fiktiv-ab:document:000008",
+                "fiktiv-ab:document:000009"
+              ],
+              "lines": [
+                {
+                  "account": "1930",
+                  "account_name": "Företagskonto",
+                  "credit": "0.00 SEK",
+                  "debit": "2.00 SEK"
+                },
+                {
+                  "account": "2893",
+                  "account_name": "Skulder till närstående personer, kortfristig del",
+                  "credit": "2.00 SEK",
+                  "debit": "0.00 SEK"
+                }
+              ],
+              "origin": "bookkeeping_input",
+              "series": "A",
+              "source_id": "260526-1-bankgirotest",
+              "verification_id": "A6",
+              "verification_number": 6
+            }
+          ],
+          "vat_period": {
+            "closing_transaction_source_id": null,
+            "cycle_end": "2026-06-30",
+            "cycle_start": "2026-04-01",
+            "declaration_boxes": {},
+            "due_in_period": false,
+            "frequency": "quarterly",
+            "input_accounts": [
+              "2641"
+            ],
+            "output_accounts": [
+              "2611"
+            ],
+            "settlement_account": "2650",
+            "status": "not_due"
+          }
+        }
+      },
+      "case_ref": {
+        "schema_id": "se.bergbok.consolidation-case",
+        "schema_version": "1.0",
+        "sha256": "16d6eb244f446d65b8422117539fae6aad8ecc1b1e127694e891e3f487a5d98e",
+        "stable_id": "fiktiv-ab:2026-05:bookkeeping:case",
+        "version": 1
+      },
+      "contract_version": "1.0",
+      "domain": "bookkeeping",
+      "evidence": [
+        {
+          "docset_ref": {
+            "schema_id": "se.bergbok.docset",
+            "schema_version": "1.0",
+            "sha256": "866bb81a0ab12888767885b80d6e46e3f155938d873fcfebf51748e2bf07bbd4",
+            "stable_id": "fiktiv-ab:2026-05:docset",
+            "version": 8
+          },
+          "document_id": "fiktiv-ab:document:000002",
+          "kind": "docset_document"
+        },
+        {
+          "docset_ref": {
+            "schema_id": "se.bergbok.docset",
+            "schema_version": "1.0",
+            "sha256": "866bb81a0ab12888767885b80d6e46e3f155938d873fcfebf51748e2bf07bbd4",
+            "stable_id": "fiktiv-ab:2026-05:docset",
+            "version": 8
+          },
+          "document_id": "fiktiv-ab:document:000003",
+          "kind": "docset_document"
+        },
+        {
+          "docset_ref": {
+            "schema_id": "se.bergbok.docset",
+            "schema_version": "1.0",
+            "sha256": "866bb81a0ab12888767885b80d6e46e3f155938d873fcfebf51748e2bf07bbd4",
+            "stable_id": "fiktiv-ab:2026-05:docset",
+            "version": 8
+          },
+          "document_id": "fiktiv-ab:document:000004",
+          "kind": "docset_document"
+        },
+        {
+          "docset_ref": {
+            "schema_id": "se.bergbok.docset",
+            "schema_version": "1.0",
+            "sha256": "866bb81a0ab12888767885b80d6e46e3f155938d873fcfebf51748e2bf07bbd4",
+            "stable_id": "fiktiv-ab:2026-05:docset",
+            "version": 8
+          },
+          "document_id": "fiktiv-ab:document:000005",
+          "kind": "docset_document"
+        },
+        {
+          "docset_ref": {
+            "schema_id": "se.bergbok.docset",
+            "schema_version": "1.0",
+            "sha256": "866bb81a0ab12888767885b80d6e46e3f155938d873fcfebf51748e2bf07bbd4",
+            "stable_id": "fiktiv-ab:2026-05:docset",
+            "version": 8
+          },
+          "document_id": "fiktiv-ab:document:000006",
+          "kind": "docset_document"
+        },
+        {
+          "docset_ref": {
+            "schema_id": "se.bergbok.docset",
+            "schema_version": "1.0",
+            "sha256": "866bb81a0ab12888767885b80d6e46e3f155938d873fcfebf51748e2bf07bbd4",
+            "stable_id": "fiktiv-ab:2026-05:docset",
+            "version": 8
+          },
+          "document_id": "fiktiv-ab:document:000007",
+          "kind": "docset_document"
+        },
+        {
+          "docset_ref": {
+            "schema_id": "se.bergbok.docset",
+            "schema_version": "1.0",
+            "sha256": "866bb81a0ab12888767885b80d6e46e3f155938d873fcfebf51748e2bf07bbd4",
+            "stable_id": "fiktiv-ab:2026-05:docset",
+            "version": 8
+          },
+          "document_id": "fiktiv-ab:document:000008",
+          "kind": "docset_document"
+        },
+        {
+          "docset_ref": {
+            "schema_id": "se.bergbok.docset",
+            "schema_version": "1.0",
+            "sha256": "866bb81a0ab12888767885b80d6e46e3f155938d873fcfebf51748e2bf07bbd4",
+            "stable_id": "fiktiv-ab:2026-05:docset",
+            "version": 8
+          },
+          "document_id": "fiktiv-ab:document:000009",
+          "kind": "docset_document"
+        }
+      ],
+      "kind": "proposal",
+      "projected_state": {
+        "payload": {
+          "company_id": "fiktiv-ab",
+          "contract_version": "1.0",
+          "currency": "SEK",
+          "ledger": {
+            "balances": [
+              {
+                "account": "1930",
+                "account_name": "Företagskonto",
+                "credit": "0.00 SEK",
+                "debit": "22502.00 SEK"
+              },
+              {
+                "account": "2081",
+                "account_name": "Aktiekapital",
+                "credit": "25000.00 SEK",
+                "debit": "0.00 SEK"
+              },
+              {
+                "account": "2440",
+                "account_name": "Leverantörsskulder",
+                "credit": "9295.00 SEK",
+                "debit": "0.00 SEK"
+              },
+              {
+                "account": "2893",
+                "account_name": "Skulder till närstående personer, kortfristig del",
+                "credit": "2.00 SEK",
+                "debit": "0.00 SEK"
+              },
+              {
+                "account": "6570",
+                "account_name": "Bankkostnader",
+                "credit": "0.00 SEK",
+                "debit": "2500.00 SEK"
+              },
+              {
+                "account": "6991",
+                "account_name": "Övriga externa kostnader, avdragsgilla",
+                "credit": "0.00 SEK",
+                "debit": "6495.00 SEK"
+              },
+              {
+                "account": "6992",
+                "account_name": "Övriga externa kostnader, ej avdragsgilla",
+                "credit": "0.00 SEK",
+                "debit": "2800.00 SEK"
+              }
+            ],
+            "verification_series": {
+              "last_number": 6,
+              "series": "A"
+            }
+          },
+          "open_items": {
+            "items": [],
+            "totals": {
+              "by_kind": {},
+              "count": 0
+            }
+          },
+          "reconciliation": {
+            "accounts": [
+              {
+                "account": "1930",
+                "evidence_document_ids": [
+                  "fiktiv-ab:document:000008"
+                ],
+                "external_closing_balance": "22502.00 SEK",
+                "ledger_closing_balance": "22502.00 SEK",
+                "status": "reconciled"
+              }
+            ],
+            "period_id": "2026-05"
+          },
+          "schema_id": "se.bergbok.bookkeeping.state",
+          "schema_version": "3.0",
+          "status": "projected",
+          "through_date": "2026-05-31",
+          "through_period_id": "2026-05",
+          "vat": {
+            "closing_transaction_source_id": null,
+            "cycle_end": "2026-06-30",
+            "cycle_start": "2026-04-01",
+            "declaration_boxes": {},
+            "due_in_period": false,
+            "frequency": "quarterly",
+            "input_accounts": [
+              "2641"
+            ],
+            "output_accounts": [
+              "2611"
+            ],
+            "settlement_account": "2650",
+            "status": "not_due"
+          }
+        },
+        "ref": {
+          "schema_id": "se.bergbok.bookkeeping.state",
+          "schema_version": "3.0",
+          "sha256": "6f1a09ebd2f20b0f5dada24df2facaece18079d0deb32aeec1440f72ec46c626",
+          "stable_id": "fiktiv-ab:bookkeeping-state",
+          "version": 1
+        }
+      },
+      "proposed_changes": [
+        {
+          "action": "replace_domain_state",
+          "domain": "bookkeeping",
+          "state_ref": {
+            "schema_id": "se.bergbok.bookkeeping.state",
+            "schema_version": "3.0",
+            "sha256": "6f1a09ebd2f20b0f5dada24df2facaece18079d0deb32aeec1440f72ec46c626",
+            "stable_id": "fiktiv-ab:bookkeeping-state",
+            "version": 1
+          }
+        }
+      ],
+      "provenance": {
+        "candidate_sha256": "f6893fdbe6cea95247eeaf9be191966a5d246cae461cde7d75ecbecad0c96198",
+        "canonical_json_profile": "bergbok-canonical-json-v1",
+        "duration_ms": 45190,
+        "execution": "ai_assessed_deterministically_validated",
+        "model": "gpt-5.6-luna",
+        "model_calls": 5,
+        "module_id": "se.bergbok.bookkeeping",
+        "module_version": "4.0.0",
+        "payroll_upstream_refs": [],
+        "pricing": {
+          "retrieved_at": "2026-09-03",
+          "source": "https://developers.openai.com/api/docs/models",
+          "value_is_estimate": true
+        },
+        "provider": "openai",
+        "reasoning_effort": "high",
+        "side_effects": "model_inference_only",
+        "store": false,
+        "tool_calls": 5,
+        "usage": {
+          "cached_input_tokens": 17990,
+          "estimated_usd": 0.0080642,
+          "input_tokens": 31048,
+          "output_tokens": 4244
+        },
+        "variant_ref": {
+          "id": "openai-gpt-5.6-luna-high-v3"
+        },
+        "worker_image": "sha256:e12470d2d2c636097c95462c5d7bdfbf5d8957125044e5370dfd38ac48be334c",
+        "worker_network": "none",
+        "worker_startup_ms": 160
+      },
+      "questions": [],
+      "reasons": [],
+      "review": {
+        "language": "sv",
+        "narrative_source": "ai",
+        "schema_version": "1.0",
+        "summary": "Förslag till bokföring för maj 2026: leverantörsfaktura, aktiekapital, bankavgift och dokumenterade testtransaktioner har sammanställts. Företagskontots utgående saldo stämmer med kontoutdraget.",
+        "transaction_summaries": [
+          {
+            "source_id": "260512-1-faktura-130989",
+            "summary": "Faktura 130989 bokförs med 2 800 kr ej avdragsgilla och 6 495 kr avdragsgilla kostnader mot leverantörsskuld; fakturan är ej momspliktig."
+          },
+          {
+            "source_id": "260522-1-aktiekapital-B022",
+            "summary": "25 000 kr bokförs som insatt aktiekapital på företagskontot mot konto 2081."
+          },
+          {
+            "source_id": "260522-2-seb-startavgift",
+            "summary": "SEB:s startavgift på 2 500 kr bokförs som bankkostnad och utbetalning från företagskontot."
+          },
+          {
+            "source_id": "260525-1-testinsättning",
+            "summary": "Testinsättningen på 1 kr från Fillipa Stark bokförs som tillfällig skuld till närstående och insättning på företagskontot."
+          },
+          {
+            "source_id": "260525-1-teståterbetalning",
+            "summary": "Återbetalningen på 1 kr till Fillipa Stark bokförs mot den tillfälliga skulden och företagskontot."
+          },
+          {
+            "source_id": "260526-1-bankgirotest",
+            "summary": "Bankgirotestets insättning på 2 kr, daterad enligt rättelsen till 2026-05-26, bokförs som tillfällig skuld till närstående."
+          }
+        ]
+      },
+      "warnings": []
+    },
+    "proposal_digest": "172834f97975b6cce0e02960eba44d5f1cde505a122cd0a9d539433ae54b7eaf",
+    "recorded_at": "2026-09-06T09:05:32.529Z",
+    "run_ref": {
+      "schema_id": "se.bergbok.consolidation-run",
+      "schema_version": "1.0",
+      "sha256": "a38cede3fab3c3af4063ce32d23cbda16f89549658160d4e519f04a4e1ff4515",
+      "stable_id": "fiktiv-ab:2026-05:bookkeeping:run",
+      "version": 1
+    }
+  },
+  "ref": {
+    "schema_id": "se.bergbok.output-snapshot",
+    "schema_version": "2.0",
+    "sha256": "d88c75730c51d4d0c2a9e4363b616d089470f8aef2d4306136ac8e04f21f05bc",
+    "stable_id": "fiktiv-ab:2026-05:bookkeeping:run:output-snapshot:a38cede3fab3c3af4063ce32d23cbda16f89549658160d4e519f04a4e1ff4515",
+    "version": "approved:6074f9c57317d9ee99d1bdb507d9f1003807a05ba6675a47f899821d4f5f0b20"
+  }
+}

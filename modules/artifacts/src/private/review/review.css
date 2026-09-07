@@ -2,12 +2,15 @@
 * { box-sizing: border-box; }
 body { margin: 0; }
 main { max-width: 70rem; margin: 0 auto; padding: 2rem; }
-h1 { margin: 0 0 .4rem; font-size: 1.8rem; }
+h1 { margin: 1.4rem 0 .85rem; font-size: 1.8rem; }
 h2 { margin: 2rem 0 .75rem; padding-bottom: .35rem; border-bottom: 2px solid #006aa7; font-size: 1.15rem; }
 h3 { margin: 1rem 0 .5rem; font-size: 1rem; }
 p { line-height: 1.5; }
-.status { display: inline-block; margin-right: .5rem; padding: .25rem .55rem; border-radius: 999px; background: #e9f3f8; font-size: .82rem; font-weight: 700; }
-.status.preview { background: #fff1b8; }
+.document-meta { margin: 0; color: #5b6870; font-size: .85rem; }
+.report-context { margin: 0; font-size: .95rem; font-weight: 400; }
+.section-meta { margin: 0 0 .75rem; color: #5b6870; font-size: .9rem; }
+.report-summary { margin: 2rem 0; }
+.report-summary p { margin: 0; }
 .notice { padding: .8rem 1rem; border-left: .3rem solid #fecc00; background: #fffaf0; }
 .meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem 1rem; margin: 1rem 0; }
 .meta dt { color: #5b6870; }
@@ -23,6 +26,10 @@ th, td { padding: .45rem .5rem; border-bottom: 1px solid #dce2e5; text-align: le
 th { background: #f3f6f7; font-weight: 700; }
 .money { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .86em; overflow-wrap: anywhere; }
+.debug-details { margin: 0; border: 0; border-radius: 0; color: #5b6870; }
+.debug-details > summary { display: list-item; width: max-content; padding: 0; color: #5b6870; font-size: .8rem; }
+.debug-details[open] > summary { margin-bottom: .5rem; }
+.debug { margin: .5rem 0 1rem; padding: .8rem; overflow-x: auto; background: #f3f6f7; font: .8rem/1.45 "SFMono-Regular", Consolas, monospace; }
 .footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #d6dde1; color: #5b6870; font-size: .8rem; }
 @media (max-width: 700px) {
   main { padding: 1rem; }
