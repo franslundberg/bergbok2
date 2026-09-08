@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,6 +119,7 @@ export async function run(options = {}) {
     if (visibleAfter !== visibleBefore) throw new Error("Visible Documents changed during Consolidation; run the period again");
   } catch (error) {
     await writeFailure(workspaceRoot, runId, period, startedAt, error);
+    await writeWorkspaceIndex(workspaceRoot, workspace);
     console.log(`[result] workspace=${workspace.workspace_id} run_id=${runId} status=technical_failure`);
     throw error;
   }
@@ -322,6 +323,114 @@ async function copyVisibleDocset(source, destination) {
 
 async function writeWorkspace(root, value) {
   await writeFile(path.join(root, WORKSPACE_FILE), `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeWorkspaceIndex(root, value);
+}
+
+// One page per workspace listing every period, so a multi-period run can be opened and read
+// without hunting through runs/ and approvals/ by hand. Built by scanning runs/ rather than
+// from workspace.runs alone, because a technical failure leaves a directory but no manifest
+// entry, and that is exactly the run someone needs to find.
+export async function writeWorkspaceIndex(root, workspace) {
+  const entries = await readdir(path.join(root, "runs"), { withFileTypes: true }).catch(() => []);
+  const runIds = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  const rows = [];
+  for (const runId of runIds) {
+    const descriptor = workspace.runs.find((item) => item.run_id === runId) ?? null;
+    const failure = descriptor ? null : await readJsonOrNull(path.join(root, "runs", runId, "failure.json"));
+    rows.push({
+      runId,
+      descriptor,
+      failure,
+      preview: await presentFiles(root, (name) => path.join("runs", runId, name)),
+      approval: await presentFiles(root, (name) => path.join("approvals", `${runId}-${name}`)),
+    });
+  }
+  await writeFile(path.join(root, "index.html"), renderWorkspaceIndex(workspace, rows), "utf8");
+}
+
+async function presentFiles(root, resolve) {
+  const found = {};
+  for (const [key, name] of [["html", "report.html"], ["pdf", "report.pdf"], ["source", "report-source.json"]]) {
+    const relative = resolve(name);
+    try {
+      await stat(path.join(root, relative));
+      found[key] = relative;
+    } catch { /* the run never produced this artifact */ }
+  }
+  return found;
+}
+
+async function readJsonOrNull(file) {
+  try { return JSON.parse(await readFile(file, "utf8")); } catch { return null; }
+}
+
+function renderWorkspaceIndex(workspace, rows) {
+  const body = rows.length
+    ? `<table><thead><tr><th>Period</th><th>Körning</th><th>Utfall</th><th>Status</th><th>Rapport</th><th>Godkänd rapport</th></tr></thead><tbody>${rows.map(indexRow).join("")}</tbody></table>`
+    : `<p class="empty">Inga körningar ännu.</p>`;
+  return `<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bokföringsdemo – ${escapeHtml(workspace.workspace_id)}</title>
+<style>
+:root { color-scheme: light; font-family: Arial, Helvetica, sans-serif; color: #172126; background: #fff; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 70rem; margin: 0 auto; padding: 2rem; }
+h1 { margin: 0 0 .35rem; font-size: 1.6rem; }
+.meta { margin: 0 0 1.5rem; color: #5b6870; font-size: .9rem; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { padding: .5rem .55rem; border-bottom: 1px solid #dce2e5; text-align: left; vertical-align: top; }
+th { background: #f3f6f7; font-weight: 700; }
+a { color: #006aa7; }
+.pill { display: inline-block; padding: .1rem .45rem; border-radius: .8rem; font-size: .8rem; }
+.ok { background: #e8f2e8; color: #1d5c25; }
+.open { background: #fff4d6; color: #7a5600; }
+.bad { background: #fbe6e6; color: #8a1f1f; }
+.empty { color: #69767d; font-style: italic; }
+code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .86em; }
+</style>
+</head>
+<body><main>
+<h1>Bokföringsdemo</h1>
+<p class="meta">${escapeHtml(workspace.workspace_id)} · ${escapeHtml(workspace.company_id)} · ${rows.length} ${rows.length === 1 ? "körning" : "körningar"}</p>
+${body}
+</main></body></html>
+`;
+}
+
+function indexRow(row) {
+  const kind = row.descriptor?.outcome_kind ?? row.failure?.status ?? "okänt";
+  const approved = row.descriptor?.approved === true;
+  // needs_input and out_of_scope are legitimate outcomes awaiting a human, not failures;
+  // only a technical failure is an error. The wording follows the report's own vocabulary.
+  const state = approved
+    ? { text: `godkänd v${escapeHtml(row.descriptor?.resulting_state_ref?.version ?? "?")}`, tone: "ok" }
+    : kind === "proposal" ? { text: "ej godkänd", tone: "open" }
+    : kind === "needs_input" ? { text: "behöver svar", tone: "open" }
+    : kind === "out_of_scope" ? { text: "utanför stöd", tone: "open" }
+    : { text: "avbruten", tone: "bad" };
+  return `<tr><td>${escapeHtml(row.descriptor?.period_id ?? row.failure?.period_id ?? "")}</td>`
+    + `<td><code>${escapeHtml(row.runId)}</code></td>`
+    + `<td>${escapeHtml(kind)}</td>`
+    + `<td><span class="pill ${state.tone}">${state.text}</span></td>`
+    + `<td>${fileLinks(row.preview)}</td>`
+    + `<td>${fileLinks(row.approval)}</td></tr>`;
+}
+
+function fileLinks(files) {
+  const links = [
+    files.html ? `<a href="${escapeHtml(files.html)}">HTML</a>` : null,
+    files.pdf ? `<a href="${escapeHtml(files.pdf)}">PDF</a>` : null,
+    files.source ? `<a href="${escapeHtml(files.source)}">JSON</a>` : null,
+  ].filter(Boolean);
+  return links.length ? links.join(" · ") : `<span class="empty">–</span>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }
 
 async function readWorkspace(root) {
