@@ -357,6 +357,7 @@ function openSupplierItem() {
   return {
     action: "open",
     item_id: "supplier:130989",
+    date: "2026-05-12",
     kind: "supplier_payable",
     party: "Leverantör AB",
     amount: "9295.00 SEK",
@@ -373,6 +374,10 @@ test("an open item that agrees with its mapped account raises no balance warning
   const items = outcome.canonical_outputs.bookkeeping.open_items;
   assert.equal(items.closing.length, 1);
   assert.deepEqual(items.totals, { count: 1, by_kind: { supplier_payable: "9295.00 SEK" } });
+  // The change carries the day it happened; the item carries the day it arose, so a later
+  // period can still report how long it has been outstanding.
+  assert.equal(items.changes[0].date, "2026-05-12");
+  assert.equal(items.closing[0].opened_date, "2026-05-12");
   assert.deepEqual(outcome.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH"), []);
 });
 
@@ -449,6 +454,7 @@ test("an open item carries forward and is settled by item_id in a later period",
   }));
   const carried = opened.projected_state.payload.open_items.items;
   assert.equal(carried[0].item_id, "supplier:130989");
+  assert.equal(carried[0].opened_date, "2026-05-12", "the opened date must survive into the next period");
   const settled = await consolidate(makeCase({
     period: { id: "2026-06", kind: "ordinary", start: "2026-06-01", end: "2026-06-30" },
     previousBookkeeping: {
@@ -473,11 +479,12 @@ test("an open item carries forward and is settled by item_id in a later period",
           { account: "1930", account_name: "Företagskonto", debit: "0.00 SEK", credit: "9295.00 SEK" },
         ],
       }],
-      open_item_changes: [{ action: "settle", item_id: "supplier:130989", amount: "9295.00 SEK", evidence_document_ids: [] }],
+      open_item_changes: [{ action: "settle", item_id: "supplier:130989", date: "2026-06-05", amount: "9295.00 SEK", evidence_document_ids: [] }],
     }),
   }));
   assert.equal(settled.kind, "proposal", JSON.stringify(settled.questions ?? settled.reasons));
   assert.deepEqual(settled.canonical_outputs.bookkeeping.open_items.closing, []);
+  assert.equal(settled.canonical_outputs.bookkeeping.open_items.changes[0].date, "2026-06-05");
   assert.deepEqual(settled.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH"), []);
 });
 

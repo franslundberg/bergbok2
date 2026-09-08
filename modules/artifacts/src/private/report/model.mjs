@@ -87,6 +87,7 @@ const LABELS = Object.freeze({
     kind: "Typ",
     party: "Part",
     remaining: "Kvar",
+    openedDate: "Öppnad",
     dueDate: "Förfallodatum",
     status: "Status",
     external: "Externt saldo",
@@ -185,6 +186,7 @@ const LABELS = Object.freeze({
     kind: "Kind",
     party: "Party",
     remaining: "Remaining",
+    openedDate: "Opened",
     dueDate: "Due date",
     status: "Status",
     external: "External balance",
@@ -662,6 +664,7 @@ function normalizeNotices(items, textKey, labels) {
 
 function normalizeOpenItemChange(item) {
   return {
+    date: item.date ?? null,
     action: item.action,
     itemId: item.item_id,
     kind: item.kind ?? null,
@@ -678,6 +681,7 @@ function normalizeOpenItem(item) {
     kind: item.kind,
     party: item.party,
     remaining: item.remaining,
+    openedDate: item.opened_date ?? null,
     dueDate: item.due_date ?? null,
     evidenceDocumentIds: [...(item.evidence_document_ids ?? [])],
   };

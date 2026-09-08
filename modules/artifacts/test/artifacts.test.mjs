@@ -43,7 +43,7 @@ async function bookkeepingSnapshot(status = "preliminary", language = "en") {
         { account: "1930", account_name: "Bank", debit: "0.00 SEK", credit: "25.00 SEK" },
       ],
     }],
-    open_item_changes: [{ action: "open", item_id: "supplier:coffee", kind: "supplier_payable", party: "Café AB", amount: "25.00 SEK", due_date: "2026-05-31", evidence_document_ids: ["receipt.pdf"] }],
+    open_item_changes: [{ action: "open", item_id: "supplier:coffee", date: "2026-05-12", kind: "supplier_payable", party: "Café AB", amount: "25.00 SEK", due_date: "2026-05-31", evidence_document_ids: ["receipt.pdf"] }],
     reconciliations: [{ account: "1930", external_closing_balance: "475.00 SEK", evidence_document_ids: ["receipt.pdf"] }],
   };
   const documents = [
@@ -247,6 +247,10 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.match(html, /<td><code>7690<\/code><\/td><td>Other personnel costs<\/td><td class="money">25\.00<\/td><td class="money">0\.00<\/td>/);
   assert.doesNotMatch(html, /SEK\u00a0[\d,.]+ (Debit|Credit)/);
   assert.match(html, /Verification series A · A8 · 1 entry/);
+  // Öppna poster: the change carries its date, the closing item the day it was opened.
+  assert.match(html, /<th>Date<\/th><th>Action<\/th><th>Item ID<\/th>/);
+  assert.match(html, /<td>2026-05-12<\/td><td>open<\/td><td>supplier:coffee<\/td>/);
+  assert.match(html, /<th class="money">Remaining<\/th><th>Opened<\/th><th>Due date<\/th>/);
   assert.match(html, /No input or output VAT was posted in the period\. The period is part of the VAT period 1 April–30 June 2026; no VAT return is due in May 2026\./);
   assert.doesNotMatch(html, /Quarterly|2641|2611|2650/);
   assert.match(html, /Content-Security-Policy/);

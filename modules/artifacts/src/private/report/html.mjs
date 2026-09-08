@@ -85,14 +85,14 @@ function openItems(section, model) {
     return `<p>${escape(l.noOpenItemsAtPeriodEnd)}</p>`;
   }
   const changes = changesGroup.items.length ? `<h3>${escape(changesGroup.title)}</h3>${table(
-    [l.action, l.itemId, l.kind, l.party, l.total, l.dueDate, l.evidenceIds],
-    changesGroup.items.map((item) => [item.action, item.itemId, item.kind, item.party, item.amount, item.dueDate, item.evidenceDocumentIds.join(", ")]),
-    [false, false, false, false, true, false, false], model.language,
+    [l.date, l.action, l.itemId, l.kind, l.party, l.total, l.dueDate, l.evidenceIds],
+    changesGroup.items.map((item) => [item.date, item.action, item.itemId, item.kind, item.party, item.amount, item.dueDate, item.evidenceDocumentIds.join(", ")]),
+    [false, false, false, false, false, true, false, false], model.language,
   )}` : `<h3>${escape(changesGroup.title)}</h3>${empty(section.emptyText)}`;
   const closing = closingGroup.items.length ? `<h3>${escape(closingGroup.title)}</h3>${table(
-    [l.itemId, l.kind, l.party, l.remaining, l.dueDate, l.evidenceIds],
-    closingGroup.items.map((item) => [item.itemId, item.kind, item.party, item.remaining, item.dueDate, item.evidenceDocumentIds.join(", ")]),
-    [false, false, false, true, false, false], model.language,
+    [l.itemId, l.kind, l.party, l.remaining, l.openedDate, l.dueDate, l.evidenceIds],
+    closingGroup.items.map((item) => [item.itemId, item.kind, item.party, item.remaining, item.openedDate, item.dueDate, item.evidenceDocumentIds.join(", ")]),
+    [false, false, false, true, false, false, false], model.language,
   )}` : `<h3>${escape(closingGroup.title)}</h3>${empty(section.emptyText)}`;
   return `${changes}${closing}`;
 }

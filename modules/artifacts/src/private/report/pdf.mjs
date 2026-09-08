@@ -167,10 +167,10 @@ function drawOpenItems(doc, section, l, language) {
   if (changes.items.length) {
     drawTable(
       doc,
-      [l.action, l.itemId, l.kind, l.party, l.total, l.dueDate, l.evidenceIds],
-      changes.items.map((item) => [item.action, item.itemId, item.kind ?? "", item.party ?? "", formatMoneyDisplay(item.amount, language), item.dueDate ?? "", item.evidenceDocumentIds.join(", ")]),
-      [55, 105, 70, 80, 76, 67, 50],
-      ["left", "left", "left", "left", "right", "left", "left"],
+      [l.date, l.action, l.itemId, l.kind, l.party, l.total, l.dueDate, l.evidenceIds],
+      changes.items.map((item) => [item.date ?? "", item.action, item.itemId, item.kind ?? "", item.party ?? "", formatMoneyDisplay(item.amount, language), item.dueDate ?? "", item.evidenceDocumentIds.join(", ")]),
+      [52, 45, 95, 65, 70, 66, 60, 50],
+      ["left", "left", "left", "left", "left", "right", "left", "left"],
       6.8,
     );
   } else empty(doc, section.emptyText);
@@ -178,10 +178,10 @@ function drawOpenItems(doc, section, l, language) {
   if (closing.items.length) {
     drawTable(
       doc,
-      [l.itemId, l.kind, l.party, l.remaining, l.dueDate, l.evidenceIds],
-      closing.items.map((item) => [item.itemId, item.kind, item.party, formatMoneyDisplay(item.remaining, language), item.dueDate ?? "", item.evidenceDocumentIds.join(", ")]),
-      [105, 75, 90, 80, 70, 83],
-      ["left", "left", "left", "right", "left", "left"],
+      [l.itemId, l.kind, l.party, l.remaining, l.openedDate, l.dueDate, l.evidenceIds],
+      closing.items.map((item) => [item.itemId, item.kind, item.party, formatMoneyDisplay(item.remaining, language), item.openedDate ?? "", item.dueDate ?? "", item.evidenceDocumentIds.join(", ")]),
+      [100, 72, 80, 70, 60, 60, 61],
+      ["left", "left", "left", "right", "left", "left", "left"],
       6.8,
     );
   } else empty(doc, section.emptyText);

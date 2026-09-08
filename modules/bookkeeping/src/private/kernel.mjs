@@ -373,6 +373,7 @@ function normalizeExistingOpenItems(rows, label, issues) {
       party: row.party,
       original_amount_ore: row.original_amount_ore ?? remaining,
       remaining_ore: remaining,
+      ...(row.opened_date ? { opened_date: row.opened_date } : {}),
       ...(row.due_date ? { due_date: row.due_date } : {}),
       evidence_document_ids: Array.isArray(row.evidence_document_ids) ? [...row.evidence_document_ids] : [],
       origin: row.origin ?? "previous_state",
@@ -410,12 +411,19 @@ function applyOpenItemChanges(opening, rows, documentIds, issues) {
         issues.push(issue("OPEN_ITEM_INVALID", `${path} has invalid open-item fields`, path));
         continue;
       }
+      if (row.date !== undefined && !validIsoDate(row.date)) {
+        issues.push(issue("OPEN_ITEM_DATE_INVALID", `${path}.date must be YYYY-MM-DD`, `${path}.date`));
+        continue;
+      }
       const item = {
         item_id: row.item_id,
         kind: row.kind,
         party: row.party,
         original_amount_ore: row.amount_ore,
         remaining_ore: row.amount_ore,
+        // The day the obligation arose, kept on the item so every later period can still
+        // report how long it has been outstanding.
+        ...(row.date ? { opened_date: row.date } : {}),
         ...(row.due_date ? { due_date: row.due_date } : {}),
         evidence_document_ids: [...evidence],
         origin: row.origin ?? "bookkeeping_input",
@@ -435,7 +443,11 @@ function applyOpenItemChanges(opening, rows, documentIds, issues) {
       }
       current.remaining_ore -= amount;
       if (current.remaining_ore === 0n) items.delete(row.item_id);
-      changes.push({ action: "settle", item_id: row.item_id, amount_ore: amount, evidence_document_ids: [...evidence], origin: row.origin ?? "bookkeeping_input" });
+      if (row.date !== undefined && !validIsoDate(row.date)) {
+        issues.push(issue("OPEN_ITEM_DATE_INVALID", `${path}.date must be YYYY-MM-DD`, `${path}.date`));
+        continue;
+      }
+      changes.push({ action: "settle", item_id: row.item_id, ...(row.date ? { date: row.date } : {}), amount_ore: amount, evidence_document_ids: [...evidence], origin: row.origin ?? "bookkeeping_input" });
     }
   }
   const closing = [...items.values()].sort((left, right) => left.item_id.localeCompare(right.item_id));
