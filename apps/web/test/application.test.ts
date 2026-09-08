@@ -637,7 +637,6 @@ test("a chat change request rejects the exact current proposal with the user's n
           transactions: [],
           open_item_changes: [],
           reconciliations: [],
-          vat: { status: "not_due" },
         },
         core: {
           organization: { name: "Fiktiv AB", organization_number: "559999-9999" },
@@ -862,46 +861,9 @@ test("Start, May and June can be proposed, approved and rendered in order", asyn
                       ],
                     },
                   ]
-                : period.id === "2026-06"
-                  ? [
-                      {
-                        source_id: "vat-close:2026-Q2",
-                        date: "2026-06-30",
-                        description: "Close quarterly VAT",
-                        evidence_document_ids: [documentId],
-                        lines: [
-                          {
-                            account: "2611",
-                            account_name: "Output VAT",
-                            debit: "25.00 SEK",
-                            credit: "0.00 SEK",
-                          },
-                          {
-                            account: "2650",
-                            account_name: "VAT settlement",
-                            debit: "0.00 SEK",
-                            credit: "25.00 SEK",
-                          },
-                        ],
-                      },
-                    ]
-                  : [],
+                : [],
             open_item_changes: [],
             reconciliations: [],
-            vat:
-              period.id === "2026-06"
-                ? {
-                    status: "due",
-                    closing_transaction_source_id: "vat-close:2026-Q2",
-                    declaration_boxes: {
-                      "10": "25.00 SEK",
-                      "11": "0.00 SEK",
-                      "12": "0.00 SEK",
-                      "48": "0.00 SEK",
-                      "49": "25.00 SEK",
-                    },
-                  }
-                : { status: "not_due" },
           },
           ...(period.kind === "start"
             ? {
@@ -950,7 +912,11 @@ test("Start, May and June can be proposed, approved and rendered in order", asyn
         );
         assert.equal(
           processed.outcome.canonical_outputs.bookkeeping.vat_period.closing_transaction_source_id,
-          "vat-close:2026-Q2",
+          "vat-closing",
+        );
+        assert.equal(
+          processed.outcome.canonical_outputs.bookkeeping.vat_period.declaration_boxes["49"],
+          "25.00 SEK",
         );
       }
       await decideRun(session, processed.runId, processed.stored.ref.sha256, "approved", database);

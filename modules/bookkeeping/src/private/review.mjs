@@ -11,9 +11,15 @@ export function proposalReview({ caseBundle, output, assessment = null }) {
   const summary = supplied?.summary ?? (language === "sv"
     ? `${output.ledger.transactions.length} balanserade transaktioner föreslås för ${caseBundle.payload.period.id}.`
     : `${output.ledger.transactions.length} balanced transactions are proposed for ${caseBundle.payload.period.id}.`);
-  const transactionSummaries = supplied?.transaction_summaries ?? output.ledger.transactions.map((transaction) => ({
+  // Merged, not all-or-nothing: a candidate only ever narrates the
+  // transactions it authored itself (e.g. never a kernel-constructed VAT
+  // closing row), so any transaction it left uncovered falls back to the
+  // same deterministic summary used when there's no candidate narrative
+  // at all.
+  const suppliedSummaries = new Map((supplied?.transaction_summaries ?? []).map((item) => [item.source_id, item.summary]));
+  const transactionSummaries = output.ledger.transactions.map((transaction) => ({
     source_id: transaction.source_id,
-    summary: fallbackTransactionSummary(transaction, language),
+    summary: suppliedSummaries.get(transaction.source_id) ?? fallbackTransactionSummary(transaction, language),
   }));
   const review = {
     schema_version: REVIEW_SCHEMA_VERSION,

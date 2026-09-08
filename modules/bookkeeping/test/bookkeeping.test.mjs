@@ -49,7 +49,6 @@ function input(overrides = {}) {
     transactions: [],
     open_item_changes: [],
     reconciliations: [],
-    vat: { status: "not_due" },
     ...overrides,
   };
 }
@@ -143,6 +142,10 @@ function balancedPurchase() {
   };
 }
 
+// Balances chosen so the kernel deterministically constructs a closing
+// transaction and declaration boxes equal to what earlier, candidate-authored
+// fixtures used to hand-supply: box 10 = 25.00 SEK, box 48 = 5.00 SEK, box 49
+// = 20.00 SEK, settled to account 2650.
 function dueVatFixture() {
   const previous = bookkeepingState({ balances: [
     { account: "1930", account_name: "Bank", debit: "100.00 SEK", credit: "0.00 SEK" },
@@ -155,22 +158,7 @@ function dueVatFixture() {
   previous.reconciliation.period_id = "2026-02";
   previous.vat.cycle_start = "2026-01-01";
   previous.vat.cycle_end = "2026-03-31";
-  const closing = {
-    source_id: "vat-close:2026-Q1",
-    date: "2026-03-31",
-    description: "Close quarterly VAT",
-    lines: [
-      { account: "2611", account_name: "Output VAT", debit: "25.00 SEK", credit: "0.00 SEK" },
-      { account: "2641", account_name: "Input VAT", debit: "0.00 SEK", credit: "5.00 SEK" },
-      { account: "2650", account_name: "VAT settlement", debit: "0.00 SEK", credit: "20.00 SEK" },
-    ],
-  };
-  const vat = {
-    status: "due",
-    closing_transaction_source_id: closing.source_id,
-    declaration_boxes: { "10": "25.00 SEK", "11": "0.00 SEK", "12": "0.00 SEK", "48": "5.00 SEK", "49": "20.00 SEK" },
-  };
-  return { previous, closing, vat };
+  return { previous };
 }
 
 test("Start proposes a zero Bookkeeping State from S0", async () => {
@@ -410,31 +398,15 @@ test("ordinary month continues numbering, balances, open items, reconciliation, 
     period: { id: "2026-03", kind: "ordinary", start: "2026-03-01", end: "2026-03-31" },
     structuredInput: input({
       period_id: "2026-03",
-      transactions: [
-        { ...balancedPurchase(), date: "2026-03-12" },
-        {
-          source_id: "vat-close:2026-Q1",
-          date: "2026-03-31",
-          description: "Close quarterly VAT",
-          lines: [
-            { account: "2611", account_name: "Output VAT", debit: "25.00 SEK", credit: "0.00 SEK" },
-            { account: "2641", account_name: "Input VAT", debit: "0.00 SEK", credit: "5.00 SEK" },
-            { account: "2650", account_name: "VAT settlement", debit: "0.00 SEK", credit: "20.00 SEK" },
-          ],
-        },
-      ],
+      transactions: [{ ...balancedPurchase(), date: "2026-03-12" }],
       open_item_changes: [{ action: "settle", item_id: "supplier:old", amount: "10.00 SEK" }],
       reconciliations: [{ account: "1930", external_closing_balance: "495.00 SEK", evidence_document_ids: ["structured-bookkeeping.json"] }],
-      vat: {
-        status: "due",
-        closing_transaction_source_id: "vat-close:2026-Q1",
-        declaration_boxes: { "10": "25.00 SEK", "11": "0.00 SEK", "12": "0.00 SEK", "48": "5.00 SEK", "49": "20.00 SEK" },
-      },
     }),
   });
   const outcome = await consolidate(caseBundle, "fixture-variant");
   assert.equal(outcome.kind, "proposal");
   const output = outcome.canonical_outputs.bookkeeping;
+  assert.equal(output.ledger.transactions.length, 2);
   assert.equal(output.ledger.transactions[0].verification_id, "A8");
   assert.equal(output.ledger.verification_series.last_number, 9);
   assert.equal(output.open_items.closing.length, 0);
@@ -443,69 +415,98 @@ test("ordinary month continues numbering, balances, open items, reconciliation, 
   assert.equal(output.vat_period.frequency, "quarterly");
   assert.equal(output.vat_period.cycle_start, "2026-01-01");
   assert.equal(output.vat_period.cycle_end, "2026-03-31");
-  assert.equal(output.vat_period.closing_transaction_source_id, "vat-close:2026-Q1");
+  assert.equal(output.vat_period.closing_transaction_source_id, "vat-closing");
+  const closing = output.ledger.transactions[1];
+  assert.equal(closing.source_id, "vat-closing");
+  assert.equal(closing.date, "2026-03-31");
+  assert.deepEqual(
+    closing.lines.map((line) => `${line.account} debit=${line.debit} credit=${line.credit}`).sort(),
+    [
+      "2611 debit=25.00 SEK credit=0.00 SEK",
+      "2641 debit=0.00 SEK credit=5.00 SEK",
+      "2650 debit=0.00 SEK credit=20.00 SEK",
+    ],
+  );
   assert.equal(outcome.provenance.variant_ref.id, "fixture-variant");
+  assert.ok(
+    outcome.review.transaction_summaries.some((item) => item.source_id === "vat-closing" && item.summary),
+    "the kernel-constructed VAT-closing transaction has its own deterministic narrative summary",
+  );
 });
 
-test("quarterly VAT timing and closing invariants fail closed", async (t) => {
+test("VAT candidate-input and period-shape invariants fail closed", async (t) => {
   const period = { id: "2026-03", kind: "ordinary", start: "2026-03-01", end: "2026-03-31" };
-  const run = async ({ previous, transactions, vat, selectedPeriod = period }) => consolidate(makeCase({
+  const run = async ({ previous, structuredInputOverrides = {}, effectivePolicies, selectedPeriod = period }) => consolidate(makeCase({
     previousBookkeeping: previous,
     period: selectedPeriod,
-    structuredInput: input({ period_id: selectedPeriod.id, transactions, vat }),
+    structuredInput: input({ period_id: selectedPeriod.id, ...structuredInputOverrides }),
+    ...(effectivePolicies ? { effectivePolicies } : {}),
   }));
-  const expectCode = async (name, mutate, code) => t.test(name, async () => {
-    const fixture = dueVatFixture();
-    mutate(fixture);
-    const outcome = await run({ previous: fixture.previous, transactions: [fixture.closing], vat: fixture.vat });
+
+  await t.test("a candidate must not supply vat at all", async () => {
+    const { previous } = dueVatFixture();
+    const outcome = await run({ previous, structuredInputOverrides: { vat: { status: "due" } } });
     assert.equal(outcome.kind, "needs_input");
-    assert.ok(outcome.questions.some((question) => question.code === code), JSON.stringify(outcome.questions));
+    assert.ok(outcome.questions.some((question) => question.code === "VAT_NOT_CANDIDATE_SUPPLIED"));
   });
 
-  {
-    const fixture = dueVatFixture();
-    const outcome = await run({ previous: fixture.previous, transactions: [], vat: { ...fixture.vat, closing_transaction_source_id: null } });
-    assert.ok(outcome.questions.some((question) => question.code === "VAT_CLOSING_REQUIRED"));
-  }
-  await expectCode("closing date must be the cycle end", ({ closing }) => { closing.date = "2026-03-30"; }, "VAT_CLOSING_DATE_MISMATCH");
-  await expectCode("closing uses only configured accounts", ({ closing }) => { closing.lines[2].account = "2660"; }, "VAT_CLOSING_ACCOUNT_INVALID");
-  await expectCode("configured VAT accounts must close to zero", ({ closing }) => {
-    closing.lines[0].debit = "24.00 SEK";
-    closing.lines[2].credit = "19.00 SEK";
-  }, "VAT_ACCOUNT_NOT_CLOSED");
-  await expectCode("declaration boxes must match balances", ({ vat }) => {
-    vat.declaration_boxes["10"] = "24.00 SEK";
-    vat.declaration_boxes["49"] = "19.00 SEK";
-  }, "VAT_OUTPUT_BOXES_MISMATCH");
-  await expectCode("box 49 must move to settlement", ({ closing }) => {
-    closing.lines[2].account = "2641";
-  }, "VAT_SETTLEMENT_MISMATCH");
+  await t.test("vat-closing is a reserved source_id", async () => {
+    const { previous } = dueVatFixture();
+    const outcome = await run({
+      previous,
+      structuredInputOverrides: {
+        transactions: [{
+          source_id: "vat-closing",
+          date: "2026-03-15",
+          description: "Not actually the closing",
+          lines: [
+            { account: "4000", account_name: "Purchases", debit: "1.00 SEK", credit: "0.00 SEK" },
+            { account: "1930", account_name: "Bank", debit: "0.00 SEK", credit: "1.00 SEK" },
+          ],
+        }],
+      },
+    });
+    assert.equal(outcome.kind, "needs_input");
+    assert.ok(outcome.questions.some((question) => question.code === "VAT_CLOSING_SOURCE_ID_RESERVED"));
+  });
 
-  {
-    const fixture = dueVatFixture();
-    const after = { ...balancedPurchase(), source_id: "after-close", date: "2026-03-31" };
-    const outcome = await run({ previous: fixture.previous, transactions: [fixture.closing, after], vat: fixture.vat });
-    assert.ok(outcome.questions.some((question) => question.code === "VAT_CLOSING_NOT_LAST"));
-  }
-  {
-    const fixture = dueVatFixture();
-    const february = { id: "2026-02", kind: "ordinary", start: "2026-02-01", end: "2026-02-28" };
-    fixture.previous.through_period_id = "2026-01";
-    fixture.previous.through_date = "2026-01-31";
-    fixture.previous.reconciliation.period_id = "2026-01";
-    const outcome = await run({ previous: fixture.previous, transactions: [], vat: fixture.vat, selectedPeriod: february });
-    assert.ok(outcome.questions.some((question) => question.code === "VAT_CLOSING_NOT_DUE"));
-    assert.ok(outcome.questions.some((question) => question.code === "VAT_BOXES_NOT_DUE"));
-  }
-  {
-    const fixture = dueVatFixture();
-    fixture.previous.through_period_id = "2025";
-    fixture.previous.through_date = "2025-12-31";
-    fixture.previous.reconciliation.period_id = "2025";
+  await t.test("a period cannot span more than one quarterly VAT deadline", async () => {
+    const { previous } = dueVatFixture();
+    previous.through_period_id = "2025";
+    previous.through_date = "2025-12-31";
+    previous.reconciliation.period_id = "2025";
     const year = { id: "2026", kind: "ordinary", start: "2026-01-01", end: "2026-12-31" };
-    const outcome = await run({ previous: fixture.previous, transactions: [], vat: fixture.vat, selectedPeriod: year });
+    const outcome = await run({ previous, selectedPeriod: year });
     assert.ok(outcome.questions.some((question) => question.code === "VAT_PERIOD_SPANS_MULTIPLE_DEADLINES"));
-  }
+  });
+
+  await t.test("more than one configured output-VAT account cannot be auto-split into boxes", async () => {
+    const { previous } = dueVatFixture();
+    const outcome = await run({
+      previous,
+      effectivePolicies: policies({ bookkeeping: { vat_reporting: {
+        frequency: "quarterly",
+        input_accounts: ["2641"],
+        output_accounts: ["2611", "2612"],
+        settlement_account: "2650",
+      } } }),
+    });
+    assert.equal(outcome.kind, "needs_input");
+    assert.ok(outcome.questions.some((question) => question.code === "VAT_OUTPUT_SPLIT_UNSUPPORTED"));
+  });
+
+  await t.test("outside quarter end, no closing transaction is constructed", async () => {
+    const { previous } = dueVatFixture();
+    const february = { id: "2026-02", kind: "ordinary", start: "2026-02-01", end: "2026-02-28" };
+    previous.through_period_id = "2026-01";
+    previous.through_date = "2026-01-31";
+    previous.reconciliation.period_id = "2026-01";
+    const outcome = await run({ previous, selectedPeriod: february });
+    assert.equal(outcome.kind, "proposal");
+    assert.equal(outcome.canonical_outputs.bookkeeping.vat_period.status, "not_due");
+    assert.equal(outcome.canonical_outputs.bookkeeping.vat_period.closing_transaction_source_id, null);
+    assert.equal(outcome.canonical_outputs.bookkeeping.ledger.transactions.length, 0);
+  });
 });
 
 test("an arbitrary ordinary interval continues from Import by date", async () => {

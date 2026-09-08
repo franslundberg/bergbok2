@@ -92,7 +92,6 @@ test("the public modules compose through an approved Payroll-to-Bookkeeping hand
     payroll_postings: [payrollPosting(payrollApproval.upstream_result.payload.output)],
     open_item_changes: [],
     reconciliations: [{ account: "1930", external_closing_balance: "500.00 SEK" }],
-    vat: { status: "not_due" },
   };
   const bookkeepingAssignment = await assign(
     company,

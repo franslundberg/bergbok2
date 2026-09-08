@@ -45,7 +45,6 @@ async function bookkeepingSnapshot(status = "preliminary", language = "en") {
     }],
     open_item_changes: [{ action: "open", item_id: "supplier:coffee", kind: "supplier_payable", party: "Café AB", amount: "25.00 SEK", due_date: "2026-05-31", evidence_document_ids: ["receipt.pdf"] }],
     reconciliations: [{ account: "1930", external_closing_balance: "475.00 SEK", evidence_document_ids: ["receipt.pdf"] }],
-    vat: { status: "not_due", closing_transaction_source_id: null, declaration_boxes: null },
   };
   const documents = [
     { document_id: "receipt.pdf", filename: "receipt.pdf", role: "evidence", media_type: "application/pdf", content_base64: Buffer.from("%PDF-demo").toString("base64") },
