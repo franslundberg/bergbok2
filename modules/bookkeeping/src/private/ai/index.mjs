@@ -200,14 +200,14 @@ Write one JSON object with no Markdown fences:
     "reconciliations": [{ "account": "1930", "external_closing_balance": "0.00 SEK", "evidence_document_ids": ["exact document_id"] }]
   },
   "review": {
-    "summary": "Plain-text consolidation summary in the selected language",
+    "summary": "Plain-text summary of the period's bookkeeping in the selected language: three to five sentences, roughly 300-500 characters, covering what the period books and why, that it balances and reconciles against the evidence, and what stands out. Write about the bookkeeping and this report, never about the workflow state; the text is reused unchanged in every later rendering, so it must not contain förslag, proposal, granskning, review, or godkänd",
     "transaction_summaries": [{
       "source_id": "exact source_id of a resulting canonical transaction",
       "summary": "One strong human-facing summary: one or two sentences on one line, at most 240 characters"
     }]
   },
   "questions": [{ "question_id": "BKQ1", "code": "MISSING_FACT", "prompt": "Question in the selected language", "evidence_document_ids": [] }],
-  "warnings": [{ "code": "WARNING", "message": "Warning in the selected language", "evidence_document_ids": [] }],
+  "warnings": [{ "code": "SHORT_CODE", "message": "A stated assumption or caveat in the selected language, naming what was assumed and how it was booked", "evidence_document_ids": [] }],
   "reasons": [{ "code": "OUTSIDE_PROFILE", "message": "Reason in the selected language", "evidence_document_ids": [] }]
 }
 \`\`\`
@@ -224,6 +224,6 @@ VAT is fully deterministic and must never appear in candidate.json: never includ
 
 Review is always required. Its summary is plain text. For a proposal, transaction_summaries must contain exactly one entry for every transaction you authored yourself, keyed by its exact source_id, including payroll-derived transactions (never a VAT-closing transaction, which you did not author). Each transaction summary is the sole human-facing narrative for that transaction. Write one or two concise sentences on one physical line, at most 240 characters, in the selected language. Combine what happened with how it was booked, using meaningful account names or numbers and the amount when relevant. Add a qualification or reason only when the treatment depends on a material accepted assumption, tax classification, or non-obvious judgment; omit routine explanations and boilerplate. Make the summary consistent with the exact resulting transaction. For needs_input and out_of_scope, transaction_summaries must be empty.
 
-For proposal, questions must be empty and bookkeeping_input is required. For needs_input, questions must be non-empty; bookkeeping_input may contain a safe partial draft. For out_of_scope, reasons must be non-empty. Core is required only when initializing the first Start or Import State. Omit fields that do not apply, except questions, warnings, and reasons are always arrays.
+For proposal, questions must be empty and bookkeeping_input is required. For needs_input, questions must be non-empty; bookkeeping_input may contain a safe partial draft. Warnings are the non-blocking channel for a stated assumption: a proposal may carry any number of them, and an assumption recorded there keeps the period approvable while showing the approver exactly what was assumed. Reach for a question only when no defensible treatment exists; a missing document whose absence has an obvious bookkeeping consequence, such as no customs decision yet for an import, is an assumption and not a question. For out_of_scope, reasons must be non-empty. Core is required only when initializing the first Start or Import State. Omit fields that do not apply, except questions, warnings, and reasons are always arrays.
 `;
 }

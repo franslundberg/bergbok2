@@ -31,7 +31,7 @@ ${model.sections.map((item) => renderSection(item, model)).join("")}
 }
 
 function renderSection(item, model) {
-  if (item.id === "core" && !item.rows.length) return "";
+  if (item.id === "core" && !item.groups.length) return "";
   if (item.id === "evidence") return "";
   if (item.id === "verification") return "";
   if (item.id === "summary") return `<section class="report-summary"><p>${escape(item.value)}</p></section>`;
@@ -41,7 +41,7 @@ function renderSection(item, model) {
   let body;
   if (item.kind === "paragraph") body = `<p>${escape(item.value)}</p>`;
   else if (item.kind === "notices") body = notices(item);
-  else if (item.kind === "key_values") body = keyValueTable(item.rows, model.labels, item.emptyText);
+  else if (item.kind === "field_groups") body = fieldGroups(item);
   else if (item.kind === "transactions") body = transactions(item, model);
   else if (item.kind === "open_items") body = openItems(item, model);
   else if (item.kind === "balances") body = balances(item, model);
@@ -51,8 +51,7 @@ function renderSection(item, model) {
   else if (item.kind === "simple_rows") body = simpleRows(item.rows, model.labels, item.emptyText);
   else if (item.kind === "preformatted") body = `<pre class="debug">${escape(item.value)}</pre>`;
   else throw new TypeError(`Unsupported ReportModel section kind ${item.kind}`);
-  const title = item.id === "core" ? model.labels.coreChanges : item.title;
-  return section(title, body);
+  return section(item.title, body);
 }
 
 function notices(section) {
@@ -142,8 +141,10 @@ function vat(section, model) {
   return `<dl class="meta">${meta(l.reportingFrequency, section.value.frequencyDisplay)}${meta(l.reportingPeriod, section.value.reportingPeriod)}${meta(l.dueInPeriod, section.value.dueDisplay)}${meta(l.status, section.value.status)}${meta(l.inputVatAccounts, section.value.inputAccountsDisplay)}${meta(l.outputVatAccounts, section.value.outputAccountsDisplay)}${meta(l.vatSettlementAccount, section.value.settlement_account)}${meta(l.vatClosingTransaction, section.value.closingTransactionDisplay)}</dl><h3>${escape(l.declarationBoxes)}</h3>${boxes}`;
 }
 
-function keyValueTable(rows, labels, emptyText) {
-  return rows.length ? table([labels.path, labels.value], rows.map((item) => [item.path, item.value])) : empty(emptyText);
+function fieldGroups(section) {
+  if (!section.groups.length) return empty(section.emptyText);
+  const lead = section.lead ? `<p class="section-meta">${escape(section.lead)}</p>` : "";
+  return lead + section.groups.map((group) => `<h3>${escape(group.title)}</h3><dl class="meta">${group.rows.map((row) => meta(row.label, row.value)).join("")}</dl>`).join("");
 }
 
 function simpleRows(rows, labels, emptyText) {
@@ -155,6 +156,6 @@ function table(headers, rows, moneyColumns = [], language = null) {
 }
 
 function section(title, body) { return `<section><h2>${escape(title)}</h2>${body}</section>`; }
-function meta(label, value) { return `<dt>${escape(label)}</dt><dd>${escape(value ?? "")}</dd>`; }
+function meta(label, value) { return `<dt>${escape(label)}</dt><dd>${escape(value ?? "").replaceAll("\n", "<br>")}</dd>`; }
 function empty(value) { return `<p class="empty">${escape(value)}</p>`; }
 function escape(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }

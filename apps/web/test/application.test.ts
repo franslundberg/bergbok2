@@ -889,9 +889,13 @@ test("Start, May and June can be proposed, approved and rendered in order", asyn
         const source = await reviewContent(processed.runId, "json", database);
         assert.equal(JSON.parse(source.bytes.toString("utf8")).payload.contract_version, "2.0");
         const html = await reviewContent(processed.runId, "html", database);
-        assert.match(html.bytes.toString("utf8"), /Bokföringsrapport/);
-        assert.match(html.bytes.toString("utf8"), /Ingen ingående eller utgående moms bokfördes i perioden/);
-        assert.doesNotMatch(html.bytes.toString("utf8"), /Kvartalsvis/);
+        const reportHtml = html.bytes.toString("utf8");
+        assert.match(reportHtml, /Bokföringsrapport/);
+        assert.match(reportHtml, /Ingen ingående eller utgående moms bokfördes i perioden/);
+        // The VAT cadence is a company fact, so it appears once under Företagsuppgifter;
+        // the Moms section stays a plain sentence for a period without VAT activity.
+        assert.match(reportHtml, /<h2>Företagsuppgifter<\/h2>[\s\S]*<dt>Redovisningsintervall<\/dt><dd>Kvartalsvis<\/dd>/);
+        assert.doesNotMatch(reportHtml.slice(reportHtml.indexOf("<h2>Moms</h2>")), /Kvartalsvis/);
         const pdf = await reviewContent(processed.runId, "pdf", database);
         assert.match(pdf.bytes.subarray(0, 8).toString("latin1"), /^%PDF-/);
       }

@@ -1,4 +1,4 @@
-import { canonicalStringify, prettyCanonicalJson } from "../../../../../contracts/src/canonical.mjs";
+import { canonicalStringify, cloneJson, prettyCanonicalJson } from "../../../../../contracts/src/canonical.mjs";
 import {
   assertContentRef,
   assertPeriod,
@@ -33,7 +33,28 @@ const LABELS = Object.freeze({
     warnings: "Varningar",
     reasons: "Orsaker",
     core: "Företagsuppgifter",
-    coreChanges: "Ändrade företagsuppgifter",
+    coreLead: "Företagsuppgifter som är nya eller uppdaterade under perioden.",
+    companyGroup: "Företag",
+    addressGroup: "Adress",
+    registrationsGroup: "Registreringar",
+    bookkeepingGroup: "Bokföring",
+    otherGroup: "Övrigt",
+    organizationName: "Namn",
+    organizationNumber: "Organisationsnummer",
+    address: "Adress",
+    vatNumber: "Momsregistreringsnummer",
+    eoriNumber: "EORI-nummer",
+    bookkeepingStartDate: "Bokföringen startar",
+    enabledModules: "Aktiverade moduler",
+    country: "Land",
+    currency: "Valuta",
+    accountingMethod: "Bokföringsmetod",
+    fiscalYear: "Räkenskapsår",
+    chartOfAccounts: "Kontoplan",
+    invoice: "faktureringsmetoden",
+    cash: "kontantmetoden",
+    moduleBookkeeping: "Bokföring",
+    modulePayroll: "Lön",
     transactions: "Bokföringstransaktioner",
     openItems: "Öppna poster",
     openItemChanges: "Förändringar",
@@ -87,7 +108,6 @@ const LABELS = Object.freeze({
     series: "Serie",
     lastNumberOpening: "Föregående nummer",
     lastNumberClosing: "Sista nummer",
-    path: "Fält",
     value: "Värde",
     previewNotice: "Detta är ett förslag. Ingenting har godkänts, bokförts, betalats, deklarerats eller skickats in.",
   }),
@@ -111,7 +131,28 @@ const LABELS = Object.freeze({
     warnings: "Warnings",
     reasons: "Reasons",
     core: "Company facts",
-    coreChanges: "Company information changes",
+    coreLead: "Company facts that are new or updated in this period.",
+    companyGroup: "Company",
+    addressGroup: "Address",
+    registrationsGroup: "Registrations",
+    bookkeepingGroup: "Bookkeeping",
+    otherGroup: "Other",
+    organizationName: "Name",
+    organizationNumber: "Organisation number",
+    address: "Address",
+    vatNumber: "VAT number",
+    eoriNumber: "EORI number",
+    bookkeepingStartDate: "Bookkeeping starts",
+    enabledModules: "Enabled modules",
+    country: "Country",
+    currency: "Currency",
+    accountingMethod: "Accounting method",
+    fiscalYear: "Fiscal year",
+    chartOfAccounts: "Chart of accounts",
+    invoice: "Invoice method",
+    cash: "Cash method",
+    moduleBookkeeping: "Bookkeeping",
+    modulePayroll: "Payroll",
     transactions: "Bookkeeping transactions",
     openItems: "Open items",
     openItemChanges: "Changes",
@@ -165,7 +206,6 @@ const LABELS = Object.freeze({
     series: "Series",
     lastNumberOpening: "Previous number",
     lastNumberClosing: "Last number",
-    path: "Field",
     value: "Value",
     previewNotice: "This is a proposal. Nothing has been approved, posted, paid, filed, or submitted.",
   }),
@@ -228,7 +268,7 @@ export function buildReportModel(snapshot) {
   const questions = normalizeNotices(outcome.questions, "prompt", labels);
   const warnings = normalizeNotices(outcome.warnings, "message", labels);
   const reasons = normalizeNotices(outcome.reasons, "message", labels);
-  const coreChanges = core ? flattenValues(core) : [];
+  const coreFacts = core ? buildCoreFacts(core, labels) : [];
   const openItemChanges = proposal ? (bookkeeping.open_items?.changes ?? []).map(normalizeOpenItemChange) : [];
   const closingOpenItems = proposal ? (bookkeeping.open_items?.closing ?? []).map(normalizeOpenItem) : [];
   const reconciliations = proposal ? (bookkeeping.reconciliations ?? []).map((item) => ({ ...item })) : [];
@@ -285,7 +325,7 @@ export function buildReportModel(snapshot) {
       groups: noticeGroups,
       emptyText: labels.none,
     }] : []),
-    { id: "core", kind: "key_values", title: labels.core, rows: coreChanges, emptyText: labels.none },
+    { id: "core", kind: "field_groups", title: labels.core, lead: labels.coreLead, groups: coreFacts, emptyText: labels.none },
     { id: "transactions", kind: "transactions", title: labels.transactions, items: transactions, emptyText: labels.none },
     {
       id: "open_items",
@@ -324,7 +364,7 @@ export function buildReportModel(snapshot) {
     questions,
     warnings,
     reasons,
-    coreChanges,
+    coreFacts,
     transactions,
     openItemChanges,
     closingOpenItems,
@@ -672,6 +712,120 @@ function money(value, currency) {
 
 function assertSame(left, right, label) {
   if (canonicalStringify(left) !== canonicalStringify(right)) throw new TypeError(`${label} are inconsistent`);
+}
+
+const ADDRESS_KEYS = Object.freeze(["street", "postal_code", "city", "country"]);
+const MODULE_LABEL_KEYS = Object.freeze({ bookkeeping: "moduleBookkeeping", payroll: "modulePayroll" });
+
+// Core company facts are presented as labelled, localized groups instead of the raw
+// canonical JSON paths. Every fact the initialization carries must still reach the
+// report, so whatever the known groups do not consume is flattened into a last group.
+function buildCoreFacts(core, labels) {
+  const rest = cloneJson(core);
+  const company = [
+    ...labelledRow(labels.organizationName, take(rest, ["organization", "name"])),
+    ...labelledRow(labels.organizationNumber, take(rest, ["organization", "organization_number"])),
+  ];
+  const composed = composedAddress(rest.address);
+  for (const key of ADDRESS_KEYS) take(rest, ["address", key]);
+  const address = [
+    ...labelledRow(labels.address, composed),
+    ...remainingRows(rest, "address"),
+  ];
+  const registrations = [
+    ...labelledRow(labels.vatNumber, take(rest, ["registrations", "vat_number"])),
+    ...labelledRow(labels.eoriNumber, take(rest, ["registrations", "eori_number"])),
+    ...remainingRows(rest, "registrations"),
+  ];
+  const method = take(rest, ["policies", "accounting_method"]);
+  const bookkeeping = [
+    ...labelledRow(labels.bookkeepingStartDate, take(rest, ["bookkeeping_start_date"])),
+    ...labelledRow(labels.enabledModules, joinList(take(rest, ["enabled_modules"]), (item) => translate(item, MODULE_LABEL_KEYS[item], labels))),
+    ...labelledRow(labels.country, take(rest, ["policies", "country"])),
+    ...labelledRow(labels.currency, take(rest, ["policies", "currency"])),
+    ...labelledRow(labels.accountingMethod, translate(method, method, labels)),
+    ...labelledRow(labels.fiscalYear, dateRange(take(rest, ["policies", "fiscal_year"]))),
+    ...labelledRow(labels.chartOfAccounts, take(rest, ["policies", "bookkeeping", "chart_of_accounts"])),
+  ];
+  const frequency = take(rest, ["policies", "bookkeeping", "vat_reporting", "frequency"]);
+  const vat = [
+    ...labelledRow(labels.reportingFrequency, translate(frequency, frequency, labels)),
+    ...labelledRow(labels.inputVatAccounts, joinList(take(rest, ["policies", "bookkeeping", "vat_reporting", "input_accounts"]))),
+    ...labelledRow(labels.outputVatAccounts, joinList(take(rest, ["policies", "bookkeeping", "vat_reporting", "output_accounts"]))),
+    ...labelledRow(labels.vatSettlementAccount, take(rest, ["policies", "bookkeeping", "vat_reporting", "settlement_account"])),
+  ];
+  const other = prune(rest);
+  return [
+    { id: "company", title: labels.companyGroup, rows: company },
+    { id: "address", title: labels.addressGroup, rows: address },
+    { id: "registrations", title: labels.registrationsGroup, rows: registrations },
+    { id: "bookkeeping", title: labels.bookkeepingGroup, rows: bookkeeping },
+    { id: "vat", title: labels.vat, rows: vat },
+    { id: "other", title: labels.otherGroup, rows: pathRows(other) },
+  ].filter((group) => group.rows.length);
+}
+
+// Reads one core value and removes it from the leftovers, so the caller can report
+// whatever remains without repeating a labelled fact.
+function take(value, path) {
+  let parent = value;
+  for (const key of path.slice(0, -1)) {
+    if (!isPlainObject(parent) || !Object.hasOwn(parent, key)) return undefined;
+    parent = parent[key];
+  }
+  const key = path[path.length - 1];
+  if (!isPlainObject(parent) || !Object.hasOwn(parent, key)) return undefined;
+  const found = parent[key];
+  delete parent[key];
+  return found;
+}
+
+function remainingRows(rest, key) {
+  const value = rest[key];
+  if (!isPlainObject(value) || !Object.keys(value).length) return [];
+  delete rest[key];
+  return pathRows(value);
+}
+
+function pathRows(value) {
+  if (!isPlainObject(value) || !Object.keys(value).length) return [];
+  return flattenValues(value).map((row) => ({ label: row.path, value: row.value }));
+}
+
+function labelledRow(label, value) {
+  return value === undefined || value === null || value === "" ? [] : [{ label, value: stableDisplay(value) }];
+}
+
+function composedAddress(address) {
+  if (!isPlainObject(address)) return undefined;
+  const locality = [address.postal_code, address.city].filter(Boolean).join(" ");
+  return [address.street, locality, address.country].filter(Boolean).join("\n") || undefined;
+}
+
+function joinList(value, format = (item) => stableDisplay(item)) {
+  if (!Array.isArray(value)) return value;
+  return value.length ? value.map(format).join(", ") : undefined;
+}
+
+function translate(value, key, labels) {
+  return typeof key === "string" && typeof labels[key] === "string" ? labels[key] : value;
+}
+
+function dateRange(value) {
+  if (!isPlainObject(value) || !value.start || !value.end) return value;
+  return `${value.start} – ${value.end}`;
+}
+
+// Objects emptied by take() carry no remaining fact and must not appear as "{}".
+function prune(value) {
+  if (!isPlainObject(value)) return value;
+  return Object.fromEntries(Object.entries(value)
+    .map(([key, child]) => [key, prune(child)])
+    .filter(([, child]) => !(isPlainObject(child) && !Object.keys(child).length)));
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function flattenValues(value, prefix = "") {

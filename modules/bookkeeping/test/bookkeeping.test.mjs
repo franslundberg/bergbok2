@@ -294,7 +294,7 @@ test("an English case produces an English Bookkeeping review without changing ac
   const outcome = consolidateOffline(caseBundle);
   assert.equal(outcome.kind, "proposal");
   assert.equal(outcome.review.language, "en");
-  assert.match(outcome.review.summary, /balanced transactions/);
+  assert.match(outcome.review.summary, /The bookkeeping for 2026-05 contains 1 verification/);
   assert.equal(outcome.canonical_outputs.bookkeeping.ledger.transactions[0].description, "Materials paid from bank");
   assert.equal(outcome.canonical_outputs.bookkeeping.vat_period.frequency, "quarterly");
   assert.equal(outcome.canonical_outputs.bookkeeping.vat_period.cycle_start, "2026-04-01");
@@ -331,6 +331,37 @@ test("Bookkeeping review requires exact single-line transaction-summary coverage
     () => assertBookkeepingReview({ ...review, transaction_summaries: [{ source_id: "T1", summary: "Två\nrader." }, review.transaction_summaries[1]] }, transactions),
     /must be one line/,
   );
+});
+
+test("deterministic summaries describe the period's bookkeeping in one status-neutral register", async () => {
+  // The summary is frozen at proposal time and reused by the approved report, so no
+  // outcome kind may describe the workflow state it happened to be in when written.
+  const statusWords = /förslag|proposal|granskning|review|godkän|approved/i;
+  const proposal = await consolidate(makeCase({ structuredInput: input({ transactions: [balancedPurchase()] }) }));
+  const needsInput = await consolidate(makeCase({
+    structuredInput: input({ transactions: [{ ...balancedPurchase(), lines: [
+      { account: "4010", account_name: "Varuinköp", debit: "125.00 SEK", credit: "0.00 SEK" },
+      { account: "1930", account_name: "Företagskonto", debit: "0.00 SEK", credit: "24.00 SEK" },
+    ] }] }),
+  }));
+  const outOfScope = await consolidate(makeCase({
+    effectivePolicies: policies({ bookkeeping: { profile: "all-swedish-businesses-v9" } }),
+  }));
+  assert.deepEqual(
+    [proposal.kind, needsInput.kind, outOfScope.kind],
+    ["proposal", "needs_input", "out_of_scope"],
+  );
+  for (const outcome of [proposal, needsInput, outOfScope]) {
+    const summary = outcome.review.summary;
+    // Well above the one-line summaries this replaced (47-72 characters), while leaving
+    // room for a quiet period that carries no reconciliation or open-item clause.
+    assert.ok(summary.length >= 150, `${outcome.kind} summary is too short: ${summary.length}`);
+    assert.match(summary, /^Bokföringen för 2026-05 /, outcome.kind);
+    assert.doesNotMatch(summary, statusWords, outcome.kind);
+  }
+  assert.match(proposal.review.summary, /omfattar 1 verifikation \(A8\) om totalt 25,00 kr\./);
+  assert.match(proposal.review.summary, /Inga öppna poster återstår vid periodens slut\./);
+  assert.match(proposal.review.summary, /Perioden ingår i momsperioden 2026-04-01–2026-06-30/);
 });
 
 test("deterministic review summaries combine the event and account treatment within the limit", () => {
@@ -608,7 +639,7 @@ test("an imbalanced transaction returns NeedsInput and no proposed changes", asy
   const outcome = await consolidate(caseBundle);
   assert.equal(outcome.kind, "needs_input");
   assert.equal(outcome.review.language, "en");
-  assert.match(outcome.review.summary, /must be resolved/);
+  assert.match(outcome.review.summary, /cannot be completed with the available evidence/);
   assert.equal(outcome.proposed_changes.length, 0);
   assert.equal(outcome.projected_state, null);
   assert.ok(outcome.questions.some((question) => question.code === "TRANSACTION_IMBALANCE"));
@@ -633,7 +664,7 @@ test("an unsupported effective policy returns OutOfScope", async () => {
   const outcome = await consolidate(caseBundle);
   assert.equal(outcome.kind, "out_of_scope");
   assert.equal(outcome.review.language, "en");
-  assert.match(outcome.review.summary, /outside the supported/);
+  assert.match(outcome.review.summary, /falls outside the supported Bookkeeping profile/);
   assert.ok(outcome.reasons.some((reason) => reason.code === "UNSUPPORTED_PROFILE"));
 });
 

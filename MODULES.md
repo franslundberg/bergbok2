@@ -211,9 +211,11 @@ Artifacts performs no submission, filing, payment, email, or delivery.
 
 The report source is the exact canonical OutputSnapshot v2. A private,
 ephemeral ReportModel is the single interpretation of its report content and
-drives both standalone semantic HTML and a fully expanded A4 PDF. Report
-artifacts and payslip PDFs use the language frozen in the output snapshot;
-callers cannot override it at render time. SIE, VAT XML, and VAT verification
+drives both standalone semantic HTML and a fully expanded A4 PDF. Core company
+facts are rendered as labelled, localized groups, with any field outside the
+known groups still reported under its canonical path. Report artifacts and
+payslip PDFs use the language frozen in the output snapshot; callers cannot
+override it at render time. SIE, VAT XML, and VAT verification
 PDF content remain unchanged. Artifact bundles expose the resolved language
 for the human-facing profiles.
 

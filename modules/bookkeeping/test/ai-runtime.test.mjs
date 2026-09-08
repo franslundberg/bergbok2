@@ -175,6 +175,10 @@ test("agent dispatches custom tools, replays call IDs, disables storage, and sto
   assert.deepEqual(bodies[0].include, ["reasoning.encrypted_content"]);
   assert.match(bodies[0].instructions, /Each transaction summary is the sole narrative/);
   assert.match(bodies[0].instructions, /add a reason only for a material assumption, tax classification, or non-obvious judgment/);
+  // A stated assumption keeps a period approvable; a question discards its bookkeeping.
+  assert.match(bodies[0].instructions, /Prefer a stated assumption over a question/);
+  assert.match(bodies[0].instructions, /absence of a document in the fixed Docset is itself evidence/);
+  assert.match(bodies[0].instructions, /Choose needs_input only when no defensible treatment exists/);
   assert.ok(bodies[1].input.some((item) => item.type === "function_call_output" && item.call_id === "call-shell"));
 });
 

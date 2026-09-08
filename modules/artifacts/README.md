@@ -19,6 +19,12 @@ lay out that shared model. The registered report profiles are:
   details;
 - `report-pdf-v1` for a complete, fully expanded A4 report.
 
+Company facts initialized by a Start or Import approval are presented as
+labelled, localized groups — company, address, registrations, bookkeeping, and
+VAT — instead of raw canonical JSON paths. The address is composed into one
+block, and any field the known groups do not cover is still reported under
+`Övrigt` with its canonical path, so no proposed fact is dropped.
+
 HTML and PDF show each Bookkeeping review transaction summary as its sole
 human-facing narrative. Expanded details contain source and evidence IDs plus
 the underlying accounts and amounts; the canonical ledger description remains

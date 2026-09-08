@@ -8,9 +8,7 @@ const SUMMARY_MAX_LENGTH = 2000;
 export function proposalReview({ caseBundle, output, assessment = null }) {
   const language = caseBundle.payload.language ?? "sv";
   const supplied = assessment?.review;
-  const summary = supplied?.summary ?? (language === "sv"
-    ? `${output.ledger.transactions.length} balanserade transaktioner föreslås för ${caseBundle.payload.period.id}.`
-    : `${output.ledger.transactions.length} balanced transactions are proposed for ${caseBundle.payload.period.id}.`);
+  const summary = supplied?.summary ?? fallbackSummary(caseBundle, output, language);
   // Merged, not all-or-nothing: a candidate only ever narrates the
   // transactions it authored itself (e.g. never a kernel-constructed VAT
   // closing row), so any transaction it left uncovered falls back to the
@@ -35,13 +33,7 @@ export function proposalReview({ caseBundle, output, assessment = null }) {
 export function classifiedReview({ caseBundle, kind, count, assessment = null }) {
   const language = caseBundle.payload.language ?? "sv";
   const supplied = assessment?.review;
-  const fallback = kind === "needs_input"
-    ? language === "sv"
-      ? `${count} fråga${count === 1 ? "" : "or"} måste lösas innan ett förslag kan skapas.`
-      : `${count} issue${count === 1 ? "" : "s"} must be resolved before a proposal can be made.`
-    : language === "sv"
-      ? "Ärendet ligger utanför den stödda bokföringsprofilen."
-      : "The case is outside the supported Bookkeeping profile.";
+  const fallback = classifiedFallbackSummary(caseBundle, kind, count, language);
   const review = {
     schema_version: REVIEW_SCHEMA_VERSION,
     language,
@@ -51,6 +43,104 @@ export function classifiedReview({ caseBundle, kind, count, assessment = null })
   };
   assertBookkeepingReview(review, []);
   return review;
+}
+
+// The summary is frozen in the OutputSnapshot when the proposal is made and reused
+// verbatim by every later render, including the approved report. It therefore describes
+// the period's bookkeeping and this report, never the workflow state: no proposal,
+// review, or approval wording, so that one text reads correctly in every report.
+function fallbackSummary(caseBundle, output, language) {
+  return [
+    ledgerSentence(output, caseBundle.payload.period.id, language),
+    reconciliationSentence(output, language),
+    openItemSentence(output, language),
+    vatSentence(output, language),
+  ].filter(Boolean).join(" ");
+}
+
+function ledgerSentence(output, periodId, language) {
+  const count = output.ledger.transactions.length;
+  if (count === 0) {
+    return language === "sv"
+      ? `Bokföringen för ${periodId} omfattar inga transaktioner.`
+      : `The bookkeeping for ${periodId} contains no transactions.`;
+  }
+  // Every clause below the count is optional: a narrative sentence drops a detail the
+  // canonical output does not carry rather than failing the whole consolidation.
+  const range = verificationRange(output.ledger, count);
+  const total = output.ledger.totals?.debit ? displayMoney(output.ledger.totals.debit, language) : "";
+  const detail = range ? ` (${range})` : "";
+  return language === "sv"
+    ? `Bokföringen för ${periodId} omfattar ${count} ${count === 1 ? "verifikation" : "verifikationer"}${detail}${total ? ` om totalt ${total}` : ""}.`
+    : `The bookkeeping for ${periodId} contains ${count} ${count === 1 ? "verification" : "verifications"}${detail}${total ? ` totalling ${total}` : ""}.`;
+}
+
+function verificationRange(ledger, count) {
+  const series = ledger.verification_series?.series;
+  const last = ledger.verification_series?.last_number;
+  if (typeof series !== "string" || !Number.isInteger(last)) return "";
+  const first = last - count + 1;
+  return first === last ? `${series}${first}` : `${series}${first}–${series}${last}`;
+}
+
+function reconciliationSentence(output, language) {
+  const accounts = output.reconciliations ?? [];
+  if (!accounts.length) return "";
+  const reconciled = accounts.filter((item) => item.status === "reconciled");
+  if (reconciled.length === accounts.length) {
+    if (accounts.length === 1) {
+      const only = accounts[0];
+      return language === "sv"
+        ? `Konto ${only.account} stäms av mot utgående saldo ${displayMoney(only.external_closing_balance, language)}.`
+        : `Account ${only.account} reconciles against the closing balance of ${displayMoney(only.external_closing_balance, language)}.`;
+    }
+    return language === "sv"
+      ? `${accounts.length} konton stäms av mot underlagens utgående saldon.`
+      : `${accounts.length} accounts reconcile against the closing balances in the evidence.`;
+  }
+  const open = accounts.length - reconciled.length;
+  return language === "sv"
+    ? `${reconciled.length} av ${accounts.length} avstämda konton stämmer mot underlagen; ${open} kräver fortsatt kontroll.`
+    : `${reconciled.length} of ${accounts.length} reconciled accounts match the evidence; ${open} still needs checking.`;
+}
+
+function openItemSentence(output, language) {
+  const closing = output.open_items?.closing;
+  if (!Array.isArray(closing)) return "";
+  if (!closing.length) {
+    return language === "sv"
+      ? "Inga öppna poster återstår vid periodens slut."
+      : "No open items remain at the end of the period.";
+  }
+  return language === "sv"
+    ? `${closing.length} ${closing.length === 1 ? "öppen post" : "öppna poster"} återstår vid periodens slut.`
+    : `${closing.length} open ${closing.length === 1 ? "item remains" : "items remain"} at the end of the period.`;
+}
+
+function vatSentence(output, language) {
+  const vat = output.vat_period;
+  if (!vat?.cycle_start || !vat?.cycle_end) return "";
+  const cycle = `${vat.cycle_start}–${vat.cycle_end}`;
+  if (vat.due_in_period) {
+    return language === "sv"
+      ? `Momsperioden ${cycle} avslutas i perioden och redovisas på konto ${vat.settlement_account}.`
+      : `The VAT period ${cycle} closes in this period and is settled to account ${vat.settlement_account}.`;
+  }
+  return language === "sv"
+    ? `Perioden ingår i momsperioden ${cycle}; ingen momsredovisning förfaller i perioden.`
+    : `The period falls inside the VAT period ${cycle}; no VAT return is due in this period.`;
+}
+
+function classifiedFallbackSummary(caseBundle, kind, count, language) {
+  const periodId = caseBundle.payload.period.id;
+  if (kind === "needs_input") {
+    return language === "sv"
+      ? `Bokföringen för ${periodId} kan inte färdigställas med det underlag som finns. ${count} ${count === 1 ? "fråga" : "frågor"} måste besvaras innan periodens transaktioner kan bokföras. Rapporten visar frågorna och det underlag de gäller.`
+      : `The bookkeeping for ${periodId} cannot be completed with the available evidence. ${count} ${count === 1 ? "question" : "questions"} must be answered before the period's transactions can be booked. This report lists the questions and the evidence they concern.`;
+  }
+  return language === "sv"
+    ? `Bokföringen för ${periodId} ligger utanför den stödda bokföringsprofilen. Rapporten redovisar orsakerna och de förhållanden som inte kan hanteras. Ingen bokföring har därför tagits fram för perioden.`
+    : `The bookkeeping for ${periodId} falls outside the supported Bookkeeping profile. This report sets out the reasons and the circumstances that cannot be handled. No bookkeeping has therefore been produced for the period.`;
 }
 
 export function assertBookkeepingReview(review, transactions) {

@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { consolidate } from "../../bookkeeping/src/index.mjs";
+import { consolidate, consolidateOffline } from "../../bookkeeping/src/index.mjs";
 import { render } from "../src/index.mjs";
 import { renderReportHtml } from "../src/private/report/html.mjs";
 import { formatMoneyNumberDisplay } from "../src/private/report/money-format.mjs";
@@ -148,6 +148,57 @@ async function pdfText(bytes) {
   });
 }
 
+// A Start period is the only case that initializes core company facts, so it is the
+// only way to reach the company-facts report section.
+async function bookkeepingStartSnapshot(language = "sv", core = {}) {
+  const previous = createStateEnvelope({ companyId: "example-ab", sequence: 0, core: {}, domains: {} });
+  const input = {
+    schema_id: "se.bergbok.bookkeeping-input", schema_version: "3.0", company_id: "example-ab", period_id: "Start", mode: "start",
+    transactions: [],
+  };
+  const documents = [
+    { document_id: "registration.pdf", filename: "registration.pdf", role: "evidence", media_type: "application/pdf", content_base64: Buffer.from("%PDF-demo").toString("base64") },
+  ];
+  const docset = sealContent({ schemaId: "se.bergbok.docset", stableId: "example-ab:Start:docset", version: 1, payload: { documents } });
+  const caseBundle = sealContent({
+    schemaId: "se.bergbok.consolidation-case", stableId: "example-ab:Start:bookkeeping", version: 1,
+    payload: {
+      contract_version: "1.0", company_id: "example-ab", domain: "bookkeeping", language,
+      period: { id: "Start", kind: "start", end: "2026-05-11" }, docset, previous_state: previous,
+      effective_policies: {
+        core: { country: "SE", currency: "SEK", fiscal_year: { start: "2026-01-01", end: "2026-12-31" }, accounting_method: "invoice" },
+        bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" } },
+      },
+      upstream_results: [],
+    },
+  });
+  const outcome = structuredClone(consolidateOffline(caseBundle, "offline-deterministic-v3", {
+    input,
+    core: {
+      organization: { name: "Fiktiv AB", organization_number: "559999-0008" },
+      registrations: { vat_number: "SE559999000801", eori_number: "SE5599990008" },
+      address: { street: "Karl Gerhards väg 27", postal_code: "133 35", city: "Saltsjöbaden", country: "SE" },
+      policies: {
+        bookkeeping: {
+          chart_of_accounts: "BAS",
+          vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" },
+        },
+      },
+      evidence_document_ids: ["registration.pdf"],
+      ...core,
+    },
+  }));
+  const runRef = createContentRef({ schemaId: "se.bergbok.consolidation-run", stableId: "example-ab:Start:bookkeeping:run", version: 1, payload: outcome });
+  return sealContent({
+    schemaId: "se.bergbok.output-snapshot", schemaVersion: "2.0", stableId: `${runRef.stable_id}:output-snapshot`, version: "preliminary",
+    payload: {
+      contract_version: "2.0", approval_status: "preliminary", language, run_ref: runRef,
+      approval_receipt_ref: null, proposal_digest: proposalDigest(outcome), recorded_at: "2026-03-31T12:00:00.000Z",
+      context: { company_id: "example-ab", domain: "bookkeeping", period: caseBundle.payload.period, docset_ref: docset.ref, previous_state_ref: previous.ref }, outcome,
+    },
+  });
+}
+
 test("all artifact profiles are asynchronous, deterministic, and sealed", async () => {
   const snapshot = await bookkeepingSnapshot("approved");
   for (const profile of ["sie4-v1", "report-source-json-v1", "report-html-v1", "report-pdf-v1"]) {
@@ -202,10 +253,9 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.doesNotMatch(html, /<script/i);
   assert.doesNotMatch(html, /Questions, warnings, and reasons/);
   assert.doesNotMatch(html, /Company facts/);
-  assert.doesNotMatch(html, /Company information changes/);
   assert.doesNotMatch(html, />Evidence<\/h2>/);
   assert.doesNotMatch(html, /<h2>Summary<\/h2>/);
-  assert.match(html, /<section class="report-summary"><p>1 balanced transactions are proposed/);
+  assert.match(html, /<section class="report-summary"><p>The bookkeeping for 2026-05 contains 1 verification \(A8\) totalling SEK 25\.00\./);
   const headings = [
     "Bookkeeping transactions", "Open items", "Account balances",
     "Reconciliations", "VAT", "Debug",
@@ -220,14 +270,14 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.doesNotMatch(html, /<details class="debug-details" open/);
   assert.match(html, /&quot;module_id&quot;: &quot;se\.bergbok\.bookkeeping&quot;/);
 
-  const htmlWithCompanyChange = renderReportHtml({
+  const htmlWithCompanyFacts = renderReportHtml({
     ...model,
     sections: model.sections.map((section) => section.id === "core"
-      ? { ...section, rows: [{ path: "organization.name", value: "Changed AB" }] }
+      ? { ...section, groups: [{ id: "company", title: "Company", rows: [{ label: "Name", value: "Changed AB" }] }] }
       : section),
   });
-  assert.match(htmlWithCompanyChange, /<h2>Company information changes<\/h2>/);
-  assert.doesNotMatch(htmlWithCompanyChange, /<h2>Company facts<\/h2>/);
+  assert.match(htmlWithCompanyFacts, /<h2>Company facts<\/h2>/);
+  assert.match(htmlWithCompanyFacts, /<h3>Company<\/h3><dl class="meta"><dt>Name<\/dt><dd>Changed AB<\/dd><\/dl>/);
 
   const hostileSummaryHtml = renderReportHtml({
     ...model,
@@ -255,6 +305,70 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.doesNotMatch(hostileHtml, /HOSTILE_CANONICAL_DESCRIPTION/);
 });
 
+test("company facts are grouped, localized, and never drop an unreported field", async () => {
+  const model = buildReportModel(await bookkeepingStartSnapshot("sv"));
+  assert.deepEqual(model.coreFacts.map((group) => group.title), [
+    "Företag", "Adress", "Registreringar", "Bokföring", "Moms",
+  ]);
+  assert.deepEqual(model.coreFacts[0].rows, [
+    { label: "Namn", value: "Fiktiv AB" },
+    { label: "Organisationsnummer", value: "559999-0008" },
+  ]);
+  assert.deepEqual(model.coreFacts[1].rows, [
+    { label: "Adress", value: "Karl Gerhards väg 27\n133 35 Saltsjöbaden\nSE" },
+  ]);
+  assert.deepEqual(model.coreFacts[2].rows, [
+    { label: "Momsregistreringsnummer", value: "SE559999000801" },
+    { label: "EORI-nummer", value: "SE5599990008" },
+  ]);
+  assert.deepEqual(model.coreFacts[3].rows, [
+    { label: "Bokföringen startar", value: "2026-05-12" },
+    { label: "Aktiverade moduler", value: "Bokföring" },
+    { label: "Land", value: "SE" },
+    { label: "Valuta", value: "SEK" },
+    { label: "Bokföringsmetod", value: "faktureringsmetoden" },
+    { label: "Räkenskapsår", value: "2026-01-01 – 2026-12-31" },
+    { label: "Kontoplan", value: "BAS" },
+  ]);
+  assert.deepEqual(model.coreFacts[4].rows, [
+    { label: "Redovisningsintervall", value: "Kvartalsvis" },
+    { label: "Konton för ingående moms", value: "2641" },
+    { label: "Konton för utgående moms", value: "2611" },
+    { label: "Momsredovisningskonto", value: "2650" },
+  ]);
+  const html = artifactBytes((await render(await bookkeepingStartSnapshot("sv"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
+  assert.match(html, /<h2>Företagsuppgifter<\/h2><p class="section-meta">Företagsuppgifter som är nya eller uppdaterade under perioden\.<\/p><h3>Företag<\/h3><dl class="meta"><dt>Namn<\/dt><dd>Fiktiv AB<\/dd>/);
+  assert.match(html, /<dd>Karl Gerhards väg 27<br>133 35 Saltsjöbaden<br>SE<\/dd>/);
+  assert.doesNotMatch(html, /organization\.name|vat_reporting|input_accounts\[0\]/);
+  const pdf = await pdfText(artifactBytes((await render(await bookkeepingStartSnapshot("sv"), "report-pdf-v1")).payload.artifacts[0]));
+  assert.match(pdf, /^Företagsuppgifter$/m);
+  assert.match(pdf.replace(/\s+/g, " "), /Företagsuppgifter som är nya eller uppdaterade under perioden\./);
+  for (const row of model.coreFacts.flatMap((group) => [group.title, ...group.rows.map((item) => item.label)])) {
+    assert.ok(pdf.includes(row), `PDF must contain ${row}`);
+  }
+  assert.match(pdf.replace(/\s+/g, " "), /Adress Karl Gerhards väg 27 133 35 Saltsjöbaden SE/);
+
+  const english = buildReportModel(await bookkeepingStartSnapshot("en"));
+  assert.deepEqual(english.coreFacts.map((group) => group.title), [
+    "Company", "Address", "Registrations", "Bookkeeping", "VAT",
+  ]);
+  assert.deepEqual(english.coreFacts[3].rows[4], { label: "Accounting method", value: "Invoice method" });
+  const englishHtml = artifactBytes((await render(await bookkeepingStartSnapshot("en"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
+  assert.match(englishHtml, /<h2>Company facts<\/h2><p class="section-meta">Company facts that are new or updated in this period\.<\/p><h3>Company<\/h3>/);
+
+  const extended = buildReportModel(await bookkeepingStartSnapshot("sv", {
+    registrations: { vat_number: "SE559999000801", f_tax: true },
+    address: { street: "Karl Gerhards väg 27", postal_code: "133 35", city: "Saltsjöbaden", country: "SE", care_of: "c/o Bergbok" },
+  }));
+  const address = extended.coreFacts.find((group) => group.id === "address");
+  assert.deepEqual(address.rows[1], { label: "care_of", value: "c/o Bergbok" });
+  const registrations = extended.coreFacts.find((group) => group.id === "registrations");
+  assert.deepEqual(registrations.rows, [
+    { label: "Momsregistreringsnummer", value: "SE559999000801" },
+    { label: "f_tax", value: "true" },
+  ]);
+});
+
 test("the PDF contains the reader-facing report with Unicode text", async () => {
   const snapshot = await bookkeepingSnapshot();
   const model = buildReportModel(snapshot);
@@ -273,7 +387,8 @@ test("the PDF contains the reader-facing report with Unicode text", async () => 
   assert.match(text, /1930/);
   assert.match(text, /Verification series A · A8 · 1 entry/);
   assert.match(compactText, /No input or output VAT was posted in the period\. The period is part of the VAT period 1 April–30 June 2026; no VAT return is due in May 2026\./);
-  assert.doesNotMatch(text, /Quarterly|2026-04-01|2026-06-30|2641|2611|2650/);
+  assert.doesNotMatch(text, /Quarterly|2641|2611|2650/);
+  assert.doesNotMatch(text.slice(text.lastIndexOf("\nVAT\n")), /2026-04-01|2026-06-30/);
   assert.doesNotMatch(text, /^Summary$/m);
   assert.doesNotMatch(text, /^Company facts$/m);
   assert.doesNotMatch(text, /^Debug$/m);

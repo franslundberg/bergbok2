@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import { formatMoneyDisplay, formatMoneyNumberDisplay, formatSignedBalanceNumberDisplay } from "./money-format.mjs";
 
 const PAGE = Object.freeze({ size: "A4", margin: 46, footer: 28 });
+// Company-fact labels such as "Momsregistreringsnummer" need more room than the
+// narrow label column the transaction and VAT metadata lists use.
+const FIELD_LABEL_WIDTH = 150;
 const COLORS = Object.freeze({ text: "#172126", muted: "#5b6870", line: "#d6dde1", blue: "#006aa7", yellow: "#fecc00", pale: "#f3f6f7" });
 const DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REGULAR_FONT = path.join(DIRECTORY, "fonts", "NotoSans-Regular.ttf");
@@ -64,14 +67,14 @@ function drawReport(doc, model) {
 function drawSection(doc, section, model) {
   const l = model.labels;
   if (["evidence", "verification", "provenance"].includes(section.id)) return;
-  if (section.id === "core" && !section.rows.length) return;
+  if (section.id === "core" && !section.groups.length) return;
   if (section.id === "summary") return introParagraph(doc, section.value);
   if (section.kind === "preformatted") {
     doc.font("Report").fontSize(7);
     const estimated = doc.heightOfString(String(section.value).trimEnd(), { width: contentWidth(doc), lineGap: 1 }) + 54;
     ensureSpace(doc, Math.min(estimated, pageBottom(doc) - PAGE.margin));
   }
-  heading(doc, section.id === "core" ? l.coreChanges : section.title);
+  heading(doc, section.title);
   if (section.kind === "paragraph") return paragraph(doc, section.value);
   if (section.kind === "notices") {
     if (!section.groups.length) return empty(doc, section.emptyText);
@@ -81,7 +84,7 @@ function drawSection(doc, section, model) {
     }
     return;
   }
-  if (section.kind === "key_values") return drawKeyValueRows(doc, section.rows, l, section.emptyText);
+  if (section.kind === "field_groups") return drawFieldGroups(doc, section);
   if (section.kind === "transactions") {
     if (!section.items.length) return empty(doc, section.emptyText);
     paragraph(doc, verificationSummary(model, section.items.length), { muted: true });
@@ -258,13 +261,17 @@ function preformatted(doc, value) {
   doc.moveDown(0.35);
 }
 
-function drawKeyValueRows(doc, rows, labels, emptyText) {
-  if (!rows.length) return empty(doc, emptyText);
-  drawTable(doc, [labels.path, labels.value], rows.map((item) => [item.path, item.value]), [170, 333]);
+function drawFieldGroups(doc, section) {
+  if (!section.groups.length) return empty(doc, section.emptyText);
+  if (section.lead) paragraph(doc, section.lead, { muted: true });
+  for (const group of section.groups) {
+    subheading(doc, group.title);
+    drawKeyValues(doc, group.rows.map((row) => [row.label, row.value]), 8.5, FIELD_LABEL_WIDTH);
+  }
 }
 
-function drawKeyValues(doc, rows, fontSize = 8.5) {
-  const widths = [105, contentWidth(doc) - 105];
+function drawKeyValues(doc, rows, fontSize = 8.5, labelWidth = 105) {
+  const widths = [labelWidth, contentWidth(doc) - labelWidth];
   for (const [label, value] of rows) {
     const height = Math.max(doc.heightOfString(String(label), { width: widths[0] - 8 }), doc.heightOfString(String(value ?? ""), { width: widths[1] - 8 })) + 5;
     ensureSpace(doc, height);
