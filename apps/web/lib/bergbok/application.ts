@@ -919,7 +919,7 @@ export async function requestProposalChanges(
 }
 
 async function persistArtifacts(runId: string, snapshot: unknown, database: BergbokDatabase) {
-  for (const profile of ["review-source-json-v1", "review-html-v1", "review-pdf-v1", "sie4-v1"]) {
+  for (const profile of ["report-source-json-v1", "report-html-v1", "report-pdf-v1", "sie4-v1"]) {
     const bundle = await Artifacts.render(snapshot, profile);
     for (const file of bundle.payload.artifacts) {
       const directory = path.join(appConfig().artifactRoot, runId, profile);
@@ -963,9 +963,9 @@ export async function reviewContent(
     runRef: JSON.parse(row.run_ref_json),
   });
   const profile = {
-    html: "review-html-v1",
-    pdf: "review-pdf-v1",
-    json: "review-source-json-v1",
+    html: "report-html-v1",
+    pdf: "report-pdf-v1",
+    json: "report-source-json-v1",
   }[format];
   if (!profile) throw httpError(400, "Ogiltigt rapportformat.");
   const bundle = await Artifacts.render(snapshot, profile);

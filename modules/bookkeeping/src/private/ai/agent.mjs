@@ -179,6 +179,7 @@ export async function runAgent({
           }
           lastValidation = value;
           terminalLog(`[tool] validate_bookkeeping_candidate ok=${Boolean(value.ok)} errors=${value.errors?.length ?? 0}`);
+          if (!value.ok) for (const message of value.errors ?? []) terminalLog(`  - ${message}`);
           if (value.ok) {
             await eventLog({ kind: "candidate_validated", step, classification: value.classification });
             return { candidate: value.candidate, validation: value, usage, steps, tool_calls: toolCalls, duration_ms: Date.now() - startedAt, final_text: responseText(response) };

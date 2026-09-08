@@ -10,7 +10,7 @@ Company Record.
 
 The portable set is `ContentRef`, `ConsolidationCase`, `ModuleOutcome`,
 `StateEnvelope`, `ApprovalReceipt`, `OutputSnapshot`, and `ArtifactBundle`.
-`OutputSnapshot` v2 is the complete approval-bound source for review rendering;
+`OutputSnapshot` v2 is the complete approval-bound source for report rendering;
 it contains the complete ModuleOutcome and exact input-context references, not
 duplicated review or canonical-output projections. Bookkeeping State, Payroll
 State, and each canonical output retain their own schema IDs and versions.

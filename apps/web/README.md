@@ -37,7 +37,7 @@ Viewing, editing, removal, bookkeeping and change requests can be requested in
 chat. The first WorkContext version is bookkeeping-only: `documents`, `review`,
 and `artifacts`. The text editor remains local workbench state. The selected
 context is kept per browser tab in `sessionStorage`; old chat messages remain
-readable without fabricated context metadata. Every completed Bookkeeping outcome has one review report, shown as
+readable without fabricated context metadata. Every completed Bookkeeping outcome has one report, shown as
 sandboxed standalone HTML. It covers proposals, questions, and out-of-scope
 results; transactions can be expanded for exact account, debit, and credit
 details. The same immutable snapshot can be downloaded as canonical JSON or a

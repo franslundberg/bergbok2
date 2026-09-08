@@ -171,10 +171,10 @@ const LABELS = Object.freeze({
   }),
 });
 
-export function buildReviewModel(snapshot) {
-  verifySealedContent(snapshot, "review OutputSnapshot");
+export function buildReportModel(snapshot) {
+  verifySealedContent(snapshot, "report OutputSnapshot");
   if (snapshot.ref.schema_id !== SNAPSHOT_SCHEMA || snapshot.ref.schema_version !== SNAPSHOT_VERSION) {
-    throw new TypeError(`Review requires ${SNAPSHOT_SCHEMA} ${SNAPSHOT_VERSION}`);
+    throw new TypeError(`Report requires ${SNAPSHOT_SCHEMA} ${SNAPSHOT_VERSION}`);
   }
   const source = snapshot.payload;
   assertOnlyKeys(source, [
@@ -184,7 +184,7 @@ export function buildReviewModel(snapshot) {
   if (source.contract_version !== SNAPSHOT_VERSION) throw new TypeError("OutputSnapshot payload must use contract version 2.0");
   if (!["preliminary", "approved"].includes(source.approval_status)) throw new TypeError("OutputSnapshot approval_status is invalid");
   if (!["sv", "en"].includes(source.language)) throw new TypeError("OutputSnapshot language is invalid");
-  if (!source.context || source.context.domain !== "bookkeeping") throw new TypeError("Review v1 supports Bookkeeping only");
+  if (!source.context || source.context.domain !== "bookkeeping") throw new TypeError("Report v1 supports Bookkeeping only");
   assertOnlyKeys(source.context, ["company_id", "domain", "period", "docset_ref", "previous_state_ref"], "OutputSnapshot context");
   if (typeof source.context.company_id !== "string" || !source.context.company_id) throw new TypeError("OutputSnapshot company_id is invalid");
   assertPeriod(source.context.period, "OutputSnapshot Period");
@@ -393,7 +393,7 @@ function reportStatusDisplay(source, outcome, labels) {
 
 function validateProposal(outcome, bookkeeping, delta, projected, context) {
   if (bookkeeping?.schema_version !== BOOKKEEPING_SCHEMA || delta?.schema_version !== BOOKKEEPING_SCHEMA) {
-    throw new TypeError("Review v1 requires Bookkeeping output and period delta schema 3.0");
+    throw new TypeError("Report v1 requires Bookkeeping output and period delta schema 3.0");
   }
   verifySealedContent(projected, "projected Bookkeeping State");
   if (projected.ref.schema_id !== "se.bergbok.bookkeeping.state" || projected.ref.schema_version !== BOOKKEEPING_SCHEMA) {

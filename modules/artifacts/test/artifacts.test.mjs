@@ -5,10 +5,10 @@ import test from "node:test";
 
 import { consolidate } from "../../bookkeeping/src/index.mjs";
 import { render } from "../src/index.mjs";
-import { renderReviewHtml } from "../src/private/review/html.mjs";
-import { formatMoneyNumberDisplay } from "../src/private/review/money-format.mjs";
-import { buildReviewModel } from "../src/private/review/model.mjs";
-import { renderReviewPdf } from "../src/private/review/pdf.mjs";
+import { renderReportHtml } from "../src/private/report/html.mjs";
+import { formatMoneyNumberDisplay } from "../src/private/report/money-format.mjs";
+import { buildReportModel } from "../src/private/report/model.mjs";
+import { renderReportPdf } from "../src/private/report/pdf.mjs";
 import { prettyCanonicalJson, sha256Bytes } from "../../../contracts/src/canonical.mjs";
 import { createContentRef, createModuleOutcome, createStateEnvelope, proposalDigest, sealContent, verifySealedContent } from "../../../contracts/src/index.mjs";
 
@@ -151,7 +151,7 @@ async function pdfText(bytes) {
 
 test("all artifact profiles are asynchronous, deterministic, and sealed", async () => {
   const snapshot = await bookkeepingSnapshot("approved");
-  for (const profile of ["sie4-v1", "review-source-json-v1", "review-html-v1", "review-pdf-v1"]) {
+  for (const profile of ["sie4-v1", "report-source-json-v1", "report-html-v1", "report-pdf-v1"]) {
     const first = await render(snapshot, profile);
     const second = await render(snapshot, profile);
     assert.deepEqual(first, second, profile);
@@ -159,19 +159,19 @@ test("all artifact profiles are asynchronous, deterministic, and sealed", async 
   }
 });
 
-test("the representative review snapshot and artifacts match their golden hashes", async () => {
+test("the representative report snapshot and artifacts match their golden hashes", async () => {
   const snapshot = await bookkeepingSnapshot("approved");
   const golden = JSON.parse(await readFile(new URL("./golden/artifact-hashes.json", import.meta.url), "utf8"));
   const actual = { snapshot: snapshot.ref.sha256, artifacts: {} };
-  for (const profile of ["review-source-json-v1", "review-html-v1", "review-pdf-v1"]) {
+  for (const profile of ["report-source-json-v1", "report-html-v1", "report-pdf-v1"]) {
     actual.artifacts[profile] = (await render(snapshot, profile)).payload.artifacts[0].sha256;
   }
   assert.deepEqual(actual, golden);
 });
 
-test("review JSON is exact and HTML is semantic, collapsed, escaped, and complete", async () => {
+test("report JSON is exact and HTML is semantic, collapsed, escaped, and complete", async () => {
   const snapshot = await bookkeepingSnapshot();
-  const model = buildReviewModel(snapshot);
+  const model = buildReportModel(snapshot);
   assert.equal(model.header.identity, "Example Ångström AB · 559999-9999 · Created 31 March 2026");
   assert.equal(model.header.context, "1–31 May 2026 · Proposal");
   assert.deepEqual(model.sections.map((section) => section.id), [
@@ -179,11 +179,11 @@ test("review JSON is exact and HTML is semantic, collapsed, escaped, and complet
     "verification", "reconciliations", "vat", "evidence", "provenance",
   ]);
   assert.equal(Object.hasOwn(model.transactions[0], "description"), false);
-  const source = await render(snapshot, "review-source-json-v1");
+  const source = await render(snapshot, "report-source-json-v1");
   const sourceJson = artifactBytes(source.payload.artifacts[0]).toString("utf8");
   assert.equal(sourceJson, prettyCanonicalJson(snapshot));
   assert.match(sourceJson, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
-  const html = artifactBytes((await render(snapshot, "review-html-v1")).payload.artifacts[0]).toString("utf8");
+  const html = artifactBytes((await render(snapshot, "report-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.match(html, /<details>/);
   assert.doesNotMatch(html, /<details open/);
   assert.match(html, /Example Ångström AB · 559999-9999 · Created 31 March 2026/);
@@ -221,7 +221,7 @@ test("review JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.doesNotMatch(html, /<details class="debug-details" open/);
   assert.match(html, /&quot;module_id&quot;: &quot;se\.bergbok\.bookkeeping&quot;/);
 
-  const htmlWithCompanyChange = renderReviewHtml({
+  const htmlWithCompanyChange = renderReportHtml({
     ...model,
     sections: model.sections.map((section) => section.id === "core"
       ? { ...section, rows: [{ path: "organization.name", value: "Changed AB" }] }
@@ -230,7 +230,7 @@ test("review JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.match(htmlWithCompanyChange, /<h2>Company information changes<\/h2>/);
   assert.doesNotMatch(htmlWithCompanyChange, /<h2>Company facts<\/h2>/);
 
-  const hostileSummaryHtml = renderReviewHtml({
+  const hostileSummaryHtml = renderReportHtml({
     ...model,
     transactions: model.transactions.map((transaction, index) => index === 0
       ? { ...transaction, summary: '<img src=x onerror="alert(1)">' }
@@ -252,14 +252,14 @@ test("review JSON is exact and HTML is semantic, collapsed, escaped, and complet
   hostile.outcome.canonical_outputs.period_delta.transactions[0].description = "HOSTILE_CANONICAL_DESCRIPTION";
   hostile.proposal_digest = proposalDigest(hostile.outcome);
   const hostileSnapshot = sealContent({ schemaId: snapshot.ref.schema_id, schemaVersion: "2.0", stableId: "hostile-source", version: 1, payload: hostile });
-  const hostileHtml = artifactBytes((await render(hostileSnapshot, "review-html-v1")).payload.artifacts[0]).toString("utf8");
+  const hostileHtml = artifactBytes((await render(hostileSnapshot, "report-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.doesNotMatch(hostileHtml, /HOSTILE_CANONICAL_DESCRIPTION/);
 });
 
-test("the PDF contains the reader-facing review with Unicode text", async () => {
+test("the PDF contains the reader-facing report with Unicode text", async () => {
   const snapshot = await bookkeepingSnapshot();
-  const model = buildReviewModel(snapshot);
-  const bytes = artifactBytes((await render(snapshot, "review-pdf-v1")).payload.artifacts[0]);
+  const model = buildReportModel(snapshot);
+  const bytes = artifactBytes((await render(snapshot, "report-pdf-v1")).payload.artifacts[0]);
   assert.match(bytes.subarray(0, 8).toString("latin1"), /^%PDF-/);
   const text = await pdfText(bytes);
   const normalizedText = text.replaceAll("\u00a0", " ");
@@ -296,7 +296,7 @@ test("the PDF contains the reader-facing review with Unicode text", async () => 
   }
   assert.match(compactText, /2081 Share capital -500\.00 0\.00 0\.00 -500\.00/);
   assert.match(compactText, /7690 Other personnel costs 25\.00 0\.00/);
-  const suppressedSectionText = await pdfText(await renderReviewPdf({
+  const suppressedSectionText = await pdfText(await renderReportPdf({
     ...model,
     sections: model.sections.map((section) => section.id === "evidence"
       ? { ...section, title: "STANDALONE EVIDENCE SECTION" }
@@ -305,7 +305,7 @@ test("the PDF contains the reader-facing review with Unicode text", async () => 
         : section),
   }));
   assert.doesNotMatch(suppressedSectionText, /STANDALONE EVIDENCE SECTION|STANDALONE DEBUG SECTION|DEBUG-ONLY-MARKER/);
-  const swedishBytes = artifactBytes((await render(await bookkeepingSnapshot("approved", "sv"), "review-pdf-v1")).payload.artifacts[0]);
+  const swedishBytes = artifactBytes((await render(await bookkeepingSnapshot("approved", "sv"), "report-pdf-v1")).payload.artifacts[0]);
   const swedishText = await pdfText(swedishBytes);
   const compactSwedishText = swedishText.replace(/\s+/g, " ");
   assert.match(swedishText, /25,00\s*kr/);
@@ -319,25 +319,25 @@ test("the PDF contains the reader-facing review with Unicode text", async () => 
       ? { ...section, groups: section.groups.map((group) => ({ ...group, items: [] })) }
       : section),
   };
-  const emptyOpenItemsText = await pdfText(await renderReviewPdf(emptyOpenItemsModel));
+  const emptyOpenItemsText = await pdfText(await renderReportPdf(emptyOpenItemsModel));
   assert.match(emptyOpenItemsText, /No open items at the end of the period\./);
   assert.doesNotMatch(emptyOpenItemsText, /^Changes$/m);
   assert.doesNotMatch(emptyOpenItemsText, /^Closing items$/m);
 });
 
-test("the review model fails closed on summary and State inconsistencies", async () => {
+test("the report model fails closed on summary and State inconsistencies", async () => {
   const snapshot = await bookkeepingSnapshot();
   const missingSummary = structuredClone(snapshot.payload);
   missingSummary.outcome.review.transaction_summaries = [];
   missingSummary.proposal_digest = proposalDigest(missingSummary.outcome);
   const invalidSummary = sealContent({ schemaId: snapshot.ref.schema_id, schemaVersion: "2.0", stableId: "missing-summary", version: 1, payload: missingSummary });
-  assert.throws(() => buildReviewModel(invalidSummary), /Missing transaction summary/);
+  assert.throws(() => buildReportModel(invalidSummary), /Missing transaction summary/);
 
   const inconsistent = structuredClone(snapshot.payload);
   inconsistent.outcome.canonical_outputs.bookkeeping.ledger.closing_balances[0].debit = "476.00 SEK";
   inconsistent.proposal_digest = proposalDigest(inconsistent.outcome);
   const invalidState = sealContent({ schemaId: snapshot.ref.schema_id, schemaVersion: "2.0", stableId: "bad-state", version: 1, payload: inconsistent });
-  assert.throws(() => buildReviewModel(invalidState), /projected closing balances/);
+  assert.throws(() => buildReportModel(invalidState), /projected closing balances/);
 
   const unreported = structuredClone(snapshot.payload);
   const projected = unreported.outcome.projected_state;
@@ -352,17 +352,17 @@ test("the review model fails closed on summary and State inconsistencies", async
   unreported.outcome.proposed_changes.find((change) => change.action === "replace_domain_state").state_ref = resealedProjected.ref;
   unreported.proposal_digest = proposalDigest(unreported.outcome);
   const invalidStructure = sealContent({ schemaId: snapshot.ref.schema_id, schemaVersion: "2.0", stableId: "unreported-state", version: 1, payload: unreported });
-  assert.throws(() => buildReviewModel(invalidStructure), /unreported fields: unreported_state/);
+  assert.throws(() => buildReportModel(invalidStructure), /unreported fields: unreported_state/);
 });
 
 test("unapproved reports are explicitly marked and approved reports are not", async () => {
-  const preview = artifactBytes((await render(await bookkeepingSnapshot("preliminary", "sv"), "review-html-v1")).payload.artifacts[0]).toString("utf8");
+  const preview = artifactBytes((await render(await bookkeepingSnapshot("preliminary", "sv"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.match(preview, /Example Ångström AB · 559999-9999 · Skapad 31 mars 2026/);
   assert.match(preview, /1–31 maj 2026 · Förslag/);
   assert.match(preview, /Ingenting har godkänts/);
   assert.match(preview, /Ingen ingående eller utgående moms bokfördes i perioden/);
   assert.doesNotMatch(preview, /Kvartalsvis/);
-  const approved = artifactBytes((await render(await bookkeepingSnapshot("approved", "sv"), "review-html-v1")).payload.artifacts[0]).toString("utf8");
+  const approved = artifactBytes((await render(await bookkeepingSnapshot("approved", "sv"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.match(approved, /1–31 maj 2026 · Godkänd version 1/);
   assert.match(approved, /25,00\u00a0kr/);
   assert.match(approved, /Momsen har inte lyfts eftersom underlaget saknar specificerad moms\./);
@@ -374,10 +374,10 @@ test("unapproved reports are explicitly marked and approved reports are not", as
 
 test("VAT artifacts use deterministic cycle dates from Bookkeeping v3", async () => {
   const source = await bookkeepingSnapshot("approved");
-  const reviewModel = buildReviewModel(source);
-  const reviewHtml = renderReviewHtml({
-    ...reviewModel,
-    sections: reviewModel.sections.map((section) => section.id === "vat"
+  const reportModel = buildReportModel(source);
+  const reportHtml = renderReportHtml({
+    ...reportModel,
+    sections: reportModel.sections.map((section) => section.id === "vat"
       ? {
           ...section,
           value: {
@@ -390,12 +390,12 @@ test("VAT artifacts use deterministic cycle dates from Bookkeeping v3", async ()
         }
       : section),
   });
-  assert.match(reviewHtml, /Reporting frequency/);
-  assert.match(reviewHtml, /Quarterly/);
-  assert.match(reviewHtml, /Declaration boxes/);
-  const reviewPdfText = await pdfText(await renderReviewPdf({
-    ...reviewModel,
-    sections: reviewModel.sections.map((section) => section.id === "vat"
+  assert.match(reportHtml, /Reporting frequency/);
+  assert.match(reportHtml, /Quarterly/);
+  assert.match(reportHtml, /Declaration boxes/);
+  const reportPdfText = await pdfText(await renderReportPdf({
+    ...reportModel,
+    sections: reportModel.sections.map((section) => section.id === "vat"
       ? {
           ...section,
           value: {
@@ -408,9 +408,9 @@ test("VAT artifacts use deterministic cycle dates from Bookkeeping v3", async ()
         }
       : section),
   }));
-  assert.match(reviewPdfText, /Reporting frequency/);
-  assert.match(reviewPdfText, /Quarterly/);
-  assert.match(reviewPdfText, /Declaration boxes/);
+  assert.match(reportPdfText, /Reporting frequency/);
+  assert.match(reportPdfText, /Quarterly/);
+  assert.match(reportPdfText, /Declaration boxes/);
   const payload = structuredClone(source.payload);
   payload.outcome.canonical_outputs.bookkeeping.vat_period = {
     frequency: "quarterly",
@@ -434,19 +434,19 @@ test("VAT artifacts use deterministic cycle dates from Bookkeeping v3", async ()
   assert.match(text, /vat-close:2026-Q2/);
 });
 
-test("needs-input and out-of-scope outcomes use the same complete review pipeline", async () => {
-  const needsInput = buildReviewModel(await classifiedSnapshot("needs_input"));
+test("needs-input and out-of-scope outcomes use the same complete report pipeline", async () => {
+  const needsInput = buildReportModel(await classifiedSnapshot("needs_input"));
   assert.equal(needsInput.outcomeKind, "needs_input");
   assert.equal(needsInput.questions[0].text, "Vilket belopp gäller?");
   assert.deepEqual(needsInput.transactions, []);
-  const needsHtml = artifactBytes((await render(await classifiedSnapshot("needs_input"), "review-html-v1")).payload.artifacts[0]).toString("utf8");
+  const needsHtml = artifactBytes((await render(await classifiedSnapshot("needs_input"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.match(needsHtml, /Frågor, varningar och orsaker/);
   assert.match(needsHtml, /Vilket belopp gäller\?/);
   assert.match(needsHtml, /Bokföringstransaktioner<\/h2><p class="empty">Inga\.<\/p>/);
   assert.match(needsHtml, /Öppna poster<\/h2><p>Inga öppna poster vid periodens slut\.<\/p>/);
   assert.doesNotMatch(needsHtml, /Förändringar<\/h3>|Kvarstående poster<\/h3>/);
 
-  const outside = buildReviewModel(await classifiedSnapshot("out_of_scope"));
+  const outside = buildReportModel(await classifiedSnapshot("out_of_scope"));
   assert.equal(outside.outcomeKind, "out_of_scope");
   assert.equal(outside.reasons[0].text, "Ärendet kräver stöd utanför piloten.");
 });
@@ -465,11 +465,11 @@ test("Artifacts rejects legacy OutputSnapshot shapes", async () => {
   await assert.rejects(render(legacy, "sie4-v1"), /output-snapshot 2.0/);
 });
 
-test("review rendering rejects Bookkeeping v2 structures", async () => {
+test("report rendering rejects Bookkeeping v2 structures", async () => {
   const source = await bookkeepingSnapshot();
   const payload = structuredClone(source.payload);
   payload.outcome.canonical_outputs.bookkeeping.schema_version = "2.0";
   payload.proposal_digest = proposalDigest(payload.outcome);
   const snapshot = sealContent({ schemaId: source.ref.schema_id, schemaVersion: "2.0", stableId: "bookkeeping-v2-snapshot", version: 1, payload });
-  await assert.rejects(render(snapshot, "review-html-v1"), /Bookkeeping output and period delta schema 3\.0/);
+  await assert.rejects(render(snapshot, "report-html-v1"), /Bookkeeping output and period delta schema 3\.0/);
 });

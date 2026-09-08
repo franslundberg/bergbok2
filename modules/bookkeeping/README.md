@@ -108,7 +108,7 @@ verification-series continuity through the day before the Bergbok Start Date:
 npm run demo:bookkeeping -- import --start-date YYYY-MM-DD --docset DIRECTORY --output WORKSPACE
 ```
 
-If a run returns `needs_input`, open its review report, then add an answer note or missing source to the
+If a run returns `needs_input`, open its report, then add an answer note or missing source to the
 visible Period directory and run that Period again. A Period from the fixture
 catalog needs only its ID; a custom ordinary Period still needs explicit
 bounds. Each rerun freezes a new
@@ -122,6 +122,6 @@ The AI worker allows up to 100 model calls and 60 minutes for one assessment,
 alongside independent per-call, tool-output, and container resource limits.
 
 Use `npm run demo:bookkeeping:offline` for the fixed, no-network example. Each
-completed Bookkeeping run writes `review-source.json`, `review.html`, and
-`review.pdf` alongside technical case and outcome diagnostics.
+completed Bookkeeping run writes `report-source.json`, `report.html`, and
+`report.pdf` alongside technical case and outcome diagnostics.
 See the root [module handbook](../../MODULES.md) for the full boundary.

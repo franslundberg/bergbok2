@@ -201,17 +201,17 @@ generated review text and payslip labels use that frozen language.
 await Artifacts.render(outputSnapshot, artifactProfile) -> ArtifactBundle
 ```
 
-Registered profiles are `review-source-json-v1`, `review-html-v1`,
-`review-pdf-v1`, `sie4-v1`, `vat-xml-v1`, `vat-verification-pdf-v1`, and
+Registered profiles are `report-source-json-v1`, `report-html-v1`,
+`report-pdf-v1`, `sie4-v1`, `vat-xml-v1`, `vat-verification-pdf-v1`, and
 `payslips-pdf-v1`. Rendering is asynchronous and deterministic: the bundle
 embeds every file's bytes, media type, byte length, and SHA-256. Artifacts
 derived from a preliminary snapshot are visibly marked as previews.
 
 Artifacts performs no submission, filing, payment, email, or delivery.
 
-The review source is the exact canonical OutputSnapshot v2. A private,
-ephemeral ReviewModel is the single interpretation of its report content and
-drives both standalone semantic HTML and a fully expanded A4 PDF. Review
+The report source is the exact canonical OutputSnapshot v2. A private,
+ephemeral ReportModel is the single interpretation of its report content and
+drives both standalone semantic HTML and a fully expanded A4 PDF. Report
 artifacts and payslip PDFs use the language frozen in the output snapshot;
 callers cannot override it at render time. SIE, VAT XML, and VAT verification
 PDF content remain unchanged. Artifact bundles expose the resolved language

@@ -166,17 +166,17 @@ const outputSnapshot = sealContent({
     outcome,
   },
 });
-const reviewBundles = await Promise.all([
-  "review-source-json-v1",
-  "review-html-v1",
-  "review-pdf-v1",
+const reportBundles = await Promise.all([
+  "report-source-json-v1",
+  "report-html-v1",
+  "report-pdf-v1",
 ].map((profile) => renderArtifacts(outputSnapshot, profile)));
-const reviewArtifacts = reviewBundles.flatMap((bundle) => bundle.payload.artifacts);
+const reportArtifacts = reportBundles.flatMap((bundle) => bundle.payload.artifacts);
 await mkdir(outputDirectory, { recursive: true });
 await Promise.all([
   writeFile(path.join(outputDirectory, "case.json"), prettyCanonicalJson(caseBundle), "utf8"),
   writeFile(path.join(outputDirectory, "outcome.json"), prettyCanonicalJson(outcome), "utf8"),
-  ...reviewArtifacts.map((artifact) => writeFile(path.join(outputDirectory, artifact.filename), Buffer.from(artifact.content_base64, "base64"))),
+  ...reportArtifacts.map((artifact) => writeFile(path.join(outputDirectory, artifact.filename), Buffer.from(artifact.content_base64, "base64"))),
 ]);
 
 console.log(`Bookkeeping demo: ${outcome.kind}`);

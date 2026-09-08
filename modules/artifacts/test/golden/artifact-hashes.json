@@ -1,8 +1,8 @@
 {
   "snapshot": "dbd7539257aaeab44b8aa20677213af2ea3527ed235f212060fa66eb96bb940f",
   "artifacts": {
-    "review-source-json-v1": "3c71306da6ce93bc8999f4b4395f93d0476db102c8837fcef93e05258fe0bfaa",
-    "review-html-v1": "53163876aa8970caee495a95aa59e9acaebf69c7f2d656e6cda6694f115a8be5",
-    "review-pdf-v1": "c9df30b3af80628b3c2a368460b163ff24b742e8d23b6dc9968e0a1825530fc4"
+    "report-source-json-v1": "3c71306da6ce93bc8999f4b4395f93d0476db102c8837fcef93e05258fe0bfaa",
+    "report-html-v1": "53163876aa8970caee495a95aa59e9acaebf69c7f2d656e6cda6694f115a8be5",
+    "report-pdf-v1": "c9df30b3af80628b3c2a368460b163ff24b742e8d23b6dc9968e0a1825530fc4"
   }
 }

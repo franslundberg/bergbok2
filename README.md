@@ -38,7 +38,7 @@ Evaluation Lab comparison. It writes an inspectable directory beneath
 
 `npm run demo:modules` executes one human-readable demo for each module. Each
 demo emits its canonical result and relevant human artifacts beneath that
-module's own `demo/generated/run-NNN/` directory. Bookkeeping review packages
+module's own `demo/generated/run-NNN/` directory. Bookkeeping report packages
 contain source JSON, standalone HTML, and expanded PDF. Runs begin at `run-001`, increase
 monotonically, and never overwrite an earlier run. Individual module tests are
 available as `npm run test:company-record`, `npm run test:bookkeeping`, and

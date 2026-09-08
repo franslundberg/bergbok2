@@ -6,30 +6,30 @@ import {
   renderVatPdf,
   renderVatXml,
 } from "./private/renderers.mjs";
-import { buildReviewModel } from "./private/review/model.mjs";
-import { renderReviewHtml } from "./private/review/html.mjs";
-import { renderReviewPdf } from "./private/review/pdf.mjs";
+import { buildReportModel } from "./private/report/model.mjs";
+import { renderReportHtml } from "./private/report/html.mjs";
+import { renderReportPdf } from "./private/report/pdf.mjs";
 
 const PROFILES = Object.freeze({
-  "review-source-json-v1": async (_outputs, _context, snapshot) => {
-    buildReviewModel(snapshot);
-    return [{ filename: "review-source.json", mediaType: "application/json; charset=utf-8", bytes: Buffer.from(prettyCanonicalJson(snapshot), "utf8") }];
+  "report-source-json-v1": async (_outputs, _context, snapshot) => {
+    buildReportModel(snapshot);
+    return [{ filename: "report-source.json", mediaType: "application/json; charset=utf-8", bytes: Buffer.from(prettyCanonicalJson(snapshot), "utf8") }];
   },
-  "review-html-v1": async (_outputs, _context, snapshot) => {
-    const html = renderReviewHtml(buildReviewModel(snapshot));
-    return [{ filename: "review.html", mediaType: "text/html; charset=utf-8", bytes: Buffer.from(html, "utf8") }];
+  "report-html-v1": async (_outputs, _context, snapshot) => {
+    const html = renderReportHtml(buildReportModel(snapshot));
+    return [{ filename: "report.html", mediaType: "text/html; charset=utf-8", bytes: Buffer.from(html, "utf8") }];
   },
-  "review-pdf-v1": async (_outputs, _context, snapshot) => [{
-    filename: "review.pdf",
+  "report-pdf-v1": async (_outputs, _context, snapshot) => [{
+    filename: "report.pdf",
     mediaType: "application/pdf",
-    bytes: await renderReviewPdf(buildReviewModel(snapshot)),
+    bytes: await renderReportPdf(buildReportModel(snapshot)),
   }],
   "sie4-v1": (outputs, context) => [renderSie(outputs, context)],
   "vat-xml-v1": (outputs, context) => [renderVatXml(outputs, context)],
   "vat-verification-pdf-v1": (outputs, context) => [renderVatPdf(outputs, context)],
   "payslips-pdf-v1": renderPayslips,
 });
-const LANGUAGE_PROFILES = new Set(["review-source-json-v1", "review-html-v1", "review-pdf-v1", "payslips-pdf-v1"]);
+const LANGUAGE_PROFILES = new Set(["report-source-json-v1", "report-html-v1", "report-pdf-v1", "payslips-pdf-v1"]);
 
 export async function render(snapshot, artifactProfile) {
   verifySealedContent(snapshot, "artifact snapshot");

@@ -170,9 +170,9 @@ const jobs = [
   ["approved-vat-xml", approvedSnapshot, "vat-xml-v1"],
   ["approved-vat-pdf", approvedSnapshot, "vat-verification-pdf-v1"],
   ["approved-payslips", payrollSnapshot, "payslips-pdf-v1"],
-  ["preview-review-source", previewSnapshot, "review-source-json-v1"],
-  ["preview-review-html", previewSnapshot, "review-html-v1"],
-  ["preview-review-pdf", previewSnapshot, "review-pdf-v1"],
+  ["preview-report-source", previewSnapshot, "report-source-json-v1"],
+  ["preview-report-html", previewSnapshot, "report-html-v1"],
+  ["preview-report-pdf", previewSnapshot, "report-pdf-v1"],
   ["preview-sie", previewSnapshot, "sie4-v1"],
 ];
 const reportRows = [];

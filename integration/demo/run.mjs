@@ -396,7 +396,7 @@ async function writeFlow(root, flow) {
   await writeFile(path.join(directory, "result", "outcome.json"), prettyCanonicalJson(flow.outcome));
   await writeFile(path.join(directory, "result", "approval.json"), prettyCanonicalJson(flow.approval.receipt));
   if (flow.outcome.domain === "bookkeeping") {
-    for (const profile of ["review-source-json-v1", "review-html-v1", "review-pdf-v1"]) {
+    for (const profile of ["report-source-json-v1", "report-html-v1", "report-pdf-v1"]) {
       const bundle = await Artifacts.render(flow.approval.output_snapshot, profile);
       const artifact = bundle.payload.artifacts[0];
       await writeFile(path.join(directory, artifact.filename), Buffer.from(artifact.content_base64, "base64"));

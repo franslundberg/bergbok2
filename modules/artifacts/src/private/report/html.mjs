@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 import { formatMoneyDisplay, formatMoneyNumberDisplay, formatSignedBalanceNumberDisplay } from "./money-format.mjs";
 
 const DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
-const CSS = readFileSync(path.join(DIRECTORY, "review.css"), "utf8");
+const CSS = readFileSync(path.join(DIRECTORY, "report.css"), "utf8");
 
-export function renderReviewHtml(model) {
+export function renderReportHtml(model) {
   const l = model.labels;
   return `<!doctype html>
 <html lang="${escape(model.language)}">
@@ -50,7 +50,7 @@ function renderSection(item, model) {
   else if (item.kind === "vat") body = vat(item, model);
   else if (item.kind === "simple_rows") body = simpleRows(item.rows, model.labels, item.emptyText);
   else if (item.kind === "preformatted") body = `<pre class="debug">${escape(item.value)}</pre>`;
-  else throw new TypeError(`Unsupported ReviewModel section kind ${item.kind}`);
+  else throw new TypeError(`Unsupported ReportModel section kind ${item.kind}`);
   const title = item.id === "core" ? model.labels.coreChanges : item.title;
   return section(title, body);
 }

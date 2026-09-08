@@ -10,7 +10,7 @@ const DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REGULAR_FONT = path.join(DIRECTORY, "fonts", "NotoSans-Regular.ttf");
 const BOLD_FONT = path.join(DIRECTORY, "fonts", "NotoSans-Bold.ttf");
 
-export async function renderReviewPdf(model) {
+export async function renderReportPdf(model) {
   const chunks = [];
   const recorded = deterministicDate(model.run.recordedAt);
   const document = new PDFDocument({
@@ -151,7 +151,7 @@ function drawSection(doc, section, model) {
     return drawTable(doc, [l.kind, l.value], section.rows.map((item) => [item.label, item.value]), [150, 353]);
   }
   if (section.kind === "preformatted") return preformatted(doc, section.value);
-  throw new TypeError(`Unsupported ReviewModel section kind ${section.kind}`);
+  throw new TypeError(`Unsupported ReportModel section kind ${section.kind}`);
 }
 
 function drawOpenItems(doc, section, l, language) {

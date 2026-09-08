@@ -184,7 +184,7 @@ conflicts with the meaning developed here:
   allows only `preliminary` and `approved` as `approval_status` values.
 - [`modules/artifacts/src/index.mjs`](../modules/artifacts/src/index.mjs) treats
   every status other than `approved` as a preview.
-- [`modules/artifacts/src/private/review/model.mjs`](../modules/artifacts/src/private/review/model.mjs)
+- [`modules/artifacts/src/private/report/model.mjs`](../modules/artifacts/src/private/report/model.mjs)
   renders the current Swedish `preliminary` status as `Förhandsvisning – inte
   godkänd`.
 - [`apps/web/lib/bergbok/application.ts`](../apps/web/lib/bergbok/application.ts)
@@ -222,7 +222,7 @@ When the model is accepted, implementation work is likely to affect:
 - shared contracts and schemas;
 - Company Record events, snapshots, approvals, and version history;
 - Bookkeeping run outcomes and review metadata;
-- deterministic Artifacts review models and HTML/PDF renderers;
+- deterministic Artifacts report models and HTML/PDF renderers;
 - web application period state, actions, labels, and API behaviour;
 - tests, fixtures, migration handling, and documentation.
 

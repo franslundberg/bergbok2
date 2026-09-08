@@ -6,14 +6,14 @@ import { prettyCanonicalJson } from "../contracts/src/canonical.mjs";
 import { render } from "../modules/artifacts/src/index.mjs";
 
 const workDirectory = path.dirname(fileURLToPath(import.meta.url));
-const sourcePath = path.resolve(process.argv[2] ?? path.join(workDirectory, "review-source.json"));
+const sourcePath = path.resolve(process.argv[2] ?? path.join(workDirectory, "report-source.json"));
 const outputDirectory = path.resolve(process.argv[3] ?? path.join(workDirectory, "rendered"));
 const profiles = process.argv.slice(4);
 const snapshot = JSON.parse(await readFile(sourcePath, "utf8"));
 
 await mkdir(outputDirectory, { recursive: true });
 
-for (const profile of profiles.length ? profiles : ["review-html-v1", "review-pdf-v1"]) {
+for (const profile of profiles.length ? profiles : ["report-html-v1", "report-pdf-v1"]) {
   const bundle = await render(snapshot, profile);
   const artifact = bundle.payload.artifacts[0];
   const artifactPath = path.join(outputDirectory, artifact.filename);

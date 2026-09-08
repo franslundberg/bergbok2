@@ -143,19 +143,19 @@ export async function run(options = {}) {
     approved: false,
   };
   const outputSnapshot = await record.read({ kind: "output_snapshot", runRef: storedRun.ref });
-  const reviewBundles = await Promise.all([
-    "review-source-json-v1",
-    "review-html-v1",
-    "review-pdf-v1",
+  const reportBundles = await Promise.all([
+    "report-source-json-v1",
+    "report-html-v1",
+    "report-pdf-v1",
   ].map((profile) => renderArtifacts(outputSnapshot, profile)));
-  const reviewArtifacts = reviewBundles.flatMap((bundle) => bundle.payload.artifacts);
+  const reportArtifacts = reportBundles.flatMap((bundle) => bundle.payload.artifacts);
   await Promise.all([
     writeFile(path.join(runDirectory, "case.json"), prettyCanonicalJson(caseBundle), "utf8"),
     writeFile(path.join(runDirectory, "outcome.json"), prettyCanonicalJson(outcome), "utf8"),
     ...(candidate ? [writeFile(path.join(runDirectory, "candidate.json"), prettyCanonicalJson(candidate), "utf8")] : []),
     writeFile(path.join(runDirectory, "manifest.json"), `${JSON.stringify(descriptor, null, 2)}\n`, "utf8"),
     writeFile(path.join(runDirectory, "events.ndjson"), `${JSON.stringify({ timestamp: startedAt.toISOString(), kind: "run_started", run_id: runId })}\n${JSON.stringify({ timestamp: finishedAt.toISOString(), kind: "run_complete", run_id: runId, outcome_kind: outcome.kind })}\n`, "utf8"),
-    ...reviewArtifacts.map((artifact) => writeFile(path.join(runDirectory, artifact.filename), Buffer.from(artifact.content_base64, "base64"))),
+    ...reportArtifacts.map((artifact) => writeFile(path.join(runDirectory, artifact.filename), Buffer.from(artifact.content_base64, "base64"))),
   ]);
   workspace.next_run_number += 1;
   workspace.runs.push(descriptor);
@@ -168,7 +168,7 @@ export async function run(options = {}) {
     console.log(`Next: update ${visibleDirectory} and run the same period again`);
   }
   console.log(`[result] workspace=${workspace.workspace_id} run_id=${runId} status=${outcome.kind}`);
-  return { workspaceRoot, runId, outcome, storedRun, outputSnapshot, reviewArtifacts };
+  return { workspaceRoot, runId, outcome, storedRun, outputSnapshot, reportArtifacts };
 }
 
 export async function approve(options = {}) {
@@ -195,15 +195,15 @@ export async function approve(options = {}) {
   await writeWorkspace(workspaceRoot, workspace);
   const approvalDirectory = path.join(workspaceRoot, "approvals");
   await mkdir(approvalDirectory, { recursive: true });
-  const reviewBundles = await Promise.all([
-    "review-source-json-v1",
-    "review-html-v1",
-    "review-pdf-v1",
+  const reportBundles = await Promise.all([
+    "report-source-json-v1",
+    "report-html-v1",
+    "report-pdf-v1",
   ].map((profile) => renderArtifacts(result.output_snapshot, profile)));
-  const reviewArtifacts = reviewBundles.flatMap((bundle) => bundle.payload.artifacts);
+  const reportArtifacts = reportBundles.flatMap((bundle) => bundle.payload.artifacts);
   await Promise.all([
     writeFile(path.join(approvalDirectory, `${descriptor.run_id}.json`), prettyCanonicalJson(result), "utf8"),
-    ...reviewArtifacts.map((artifact) => writeFile(
+    ...reportArtifacts.map((artifact) => writeFile(
       path.join(approvalDirectory, `${descriptor.run_id}-${artifact.filename}`),
       Buffer.from(artifact.content_base64, "base64"),
     )),
