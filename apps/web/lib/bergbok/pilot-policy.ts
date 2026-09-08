@@ -13,7 +13,8 @@ export const PILOT_VAT_POLICY = Object.freeze({
 export const PILOT_OPEN_ITEM_POLICY = Object.freeze({
   supplier_payable: Object.freeze({ accounts: Object.freeze(["2440"]), side: "credit" }),
   customer_receivable: Object.freeze({ accounts: Object.freeze(["1510"]), side: "debit" }),
-  other_current_payable: Object.freeze({ accounts: Object.freeze(["2890", "2893"]), side: "credit" }),
+  related_party_payable: Object.freeze({ accounts: Object.freeze(["2893"]), side: "credit" }),
+  other_current_payable: Object.freeze({ accounts: Object.freeze(["2890"]), side: "credit" }),
   other_current_receivable: Object.freeze({ accounts: Object.freeze(["1680"]), side: "debit" }),
 });
 

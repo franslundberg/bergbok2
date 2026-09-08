@@ -37,7 +37,8 @@ function policies(overrides = {}) {
       open_items: {
         supplier_payable: { accounts: ["2440"], side: "credit" },
         customer_receivable: { accounts: ["1510"], side: "debit" },
-        other_current_payable: { accounts: ["2890", "2893"], side: "credit" },
+        related_party_payable: { accounts: ["2893"], side: "credit" },
+        other_current_payable: { accounts: ["2890"], side: "credit" },
         other_current_receivable: { accounts: ["1680"], side: "debit" },
       },
       ...(overrides.bookkeeping ?? {}),
@@ -384,6 +385,62 @@ test("an open item that disagrees with its mapped account warns without blocking
   const warning = outcome.warnings.find((item) => item.code === "OPEN_ITEM_BALANCE_MISMATCH");
   assert.ok(warning, "missing OPEN_ITEM_BALANCE_MISMATCH");
   assert.match(warning.message, /supplier_payable uppgår till 0,00 kr medan konto 2440 visar 9 ?295,00 kr\./);
+});
+
+test("a point-of-sale purchase books straight to the payment account with no open item", async () => {
+  // Paid at the till by card: no obligation ever stood, so no payable and no item. Both
+  // sides of the balance check are zero, which agrees.
+  const outcome = await consolidate(makeCase({
+    structuredInput: input({
+      transactions: [{
+        source_id: "clas-ohlson-2026-08-11",
+        date: "2026-05-11",
+        description: "8 st SmartStore Home",
+        lines: [
+          { account: "5460", account_name: "Förbrukningsmaterial", debit: "511.49 SEK", credit: "0.00 SEK" },
+          { account: "2641", account_name: "Debiterad ingående moms", debit: "127.87 SEK", credit: "0.00 SEK" },
+          { account: "1930", account_name: "Företagskonto", debit: "0.00 SEK", credit: "639.36 SEK" },
+        ],
+      }],
+    }),
+  }));
+  assert.equal(outcome.kind, "proposal");
+  assert.deepEqual(outcome.canonical_outputs.bookkeeping.open_items.closing, []);
+  assert.deepEqual(outcome.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH"), []);
+});
+
+test("related-party debt is pinned to 2893 and drifting to 2890 is caught", async () => {
+  const outlay = (account) => ({
+    structuredInput: input({
+      transactions: [{
+        source_id: "outlay-2026-05-03",
+        date: "2026-05-03",
+        description: "Privat betalt inköp",
+        lines: [
+          { account: "4010", account_name: "Inköp material", debit: "615.71 SEK", credit: "0.00 SEK" },
+          { account, account_name: "Skuld", debit: "0.00 SEK", credit: "615.71 SEK" },
+        ],
+      }],
+      open_item_changes: [{
+        action: "open",
+        item_id: "related_party:Filippa Stark:2026-05-03",
+        kind: "related_party_payable",
+        party: "Filippa Stark",
+        amount: "615.71 SEK",
+        evidence_document_ids: [],
+      }],
+    }),
+  });
+  const pinned = await consolidate(makeCase(outlay("2893")));
+  assert.equal(pinned.kind, "proposal");
+  assert.deepEqual(pinned.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH"), []);
+
+  const drifted = await consolidate(makeCase(outlay("2890")));
+  assert.equal(drifted.kind, "proposal");
+  const warnings = drifted.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH");
+  assert.equal(warnings.length, 2, "both the empty 2893 and the unclaimed 2890 must be reported");
+  assert.ok(warnings.some((w) => /related_party_payable/.test(w.message)));
+  assert.ok(warnings.some((w) => /other_current_payable/.test(w.message)));
 });
 
 test("an open item carries forward and is settled by item_id in a later period", async () => {

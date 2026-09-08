@@ -116,7 +116,8 @@ test("the public modules compose through an approved Payroll-to-Bookkeeping hand
         open_items: {
           supplier_payable: { accounts: ["2440"], side: "credit" },
           customer_receivable: { accounts: ["1510"], side: "debit" },
-          other_current_payable: { accounts: ["2890", "2893"], side: "credit" },
+          related_party_payable: { accounts: ["2893"], side: "credit" },
+          other_current_payable: { accounts: ["2890"], side: "credit" },
           other_current_receivable: { accounts: ["1680"], side: "debit" },
         },
         ...bookkeepingCorePolicy(),

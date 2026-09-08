@@ -182,6 +182,8 @@ test("agent dispatches custom tools, replays call IDs, disables storage, and sto
   // Open items must be created, not merely preserved, and settled by a stable id.
   assert.match(bodies[0].instructions, /create the open items this period earns/);
   assert.match(bodies[0].instructions, /Settle by the exact item_id carried in previous-state\.json/);
+  // A till payment creates no obligation, so it must not be modelled as a payable.
+  assert.match(bodies[0].instructions, /paid at the point of sale by card, Swish, cash, or direct charge creates no obligation/);
   assert.ok(bodies[1].input.some((item) => item.type === "function_call_output" && item.call_id === "call-shell"));
 });
 

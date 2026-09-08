@@ -107,7 +107,7 @@ const caseBundle = sealContent({
     previous_state: previous,
     effective_policies: {
       core: { country: "SE", currency: "SEK", fiscal_year: { start: "2026-01-01", end: "2026-12-31" }, accounting_method: "invoice" },
-      bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" }, open_items: { supplier_payable: { accounts: ["2440"], side: "credit" }, customer_receivable: { accounts: ["1510"], side: "debit" }, other_current_payable: { accounts: ["2890", "2893"], side: "credit" }, other_current_receivable: { accounts: ["1680"], side: "debit" } } },
+      bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" }, open_items: { supplier_payable: { accounts: ["2440"], side: "credit" }, customer_receivable: { accounts: ["1510"], side: "debit" }, related_party_payable: { accounts: ["2893"], side: "credit" }, other_current_payable: { accounts: ["2890"], side: "credit" }, other_current_receivable: { accounts: ["1680"], side: "debit" } } },
     },
     upstream_results: [],
   },
