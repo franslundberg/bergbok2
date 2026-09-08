@@ -63,6 +63,9 @@ export function scopeReasons(input, caseBundle) {
   } else if (!validVatAccountPolicy(vatPolicy)) {
     reasons.push({ code: "INVALID_VAT_ACCOUNT_POLICY", message: "VAT reporting requires configured input, output, and settlement accounts" });
   }
+  if (bookkeeping?.open_items !== undefined && !validOpenItemAccountPolicy(bookkeeping.open_items)) {
+    reasons.push({ code: "INVALID_OPEN_ITEM_ACCOUNT_POLICY", message: "Open-item accounts must map each kind to four-digit BAS accounts and a debit or credit side, without reusing an account" });
+  }
   if (input.profile !== undefined && input.profile !== bookkeeping?.profile) reasons.push({ code: "POLICY_MISMATCH", message: "Input profile differs from the fixed effective policy" });
   if (input.currency !== undefined && input.currency !== core?.currency) reasons.push({ code: "POLICY_MISMATCH", message: "Input currency differs from the fixed effective policy" });
   if (input.organization?.country !== undefined && input.organization.country !== core?.country) reasons.push({ code: "POLICY_MISMATCH", message: "Input country differs from the fixed effective policy" });
@@ -86,6 +89,22 @@ function validVatAccountPolicy(value) {
   const all = [...inputs, ...outputs, value.settlement_account];
   return all.every((account) => typeof account === "string" && /^\d{4}$/.test(account))
     && new Set(all).size === all.length;
+}
+
+// The mapping is optional controller policy: when it is absent the balance check is
+// simply not performed, so third-party and historical cases keep working unchanged.
+function validOpenItemAccountPolicy(value) {
+  if (!isPlainObject(value)) return false;
+  const entries = Object.values(value);
+  if (!entries.length) return false;
+  const all = [];
+  for (const entry of entries) {
+    if (!isPlainObject(entry) || !["debit", "credit"].includes(entry.side)) return false;
+    if (!Array.isArray(entry.accounts) || !entry.accounts.length) return false;
+    if (!entry.accounts.every((account) => typeof account === "string" && /^\d{4}$/.test(account))) return false;
+    all.push(...entry.accounts);
+  }
+  return new Set(all).size === all.length;
 }
 
 function calendarFiscalYear(value) {

@@ -196,7 +196,10 @@ Write one JSON object with no Markdown fences:
       "description": "Description in the selected language, preserving source wording when reused",
       "assignments": [{ "fact_id": "copy exact fact_id", "account": "7010", "account_name": "AI-selected account name" }]
     }],
-    "open_item_changes": [],
+    "open_item_changes": [
+      { "action": "open", "item_id": "supplier:130989", "kind": "supplier_payable", "party": "Exact counterparty name", "amount": "9295.00 SEK", "due_date": "YYYY-MM-DD", "evidence_document_ids": ["exact document_id"] },
+      { "action": "settle", "item_id": "supplier:130989", "amount": "9295.00 SEK", "evidence_document_ids": ["exact document_id"] }
+    ],
     "reconciliations": [{ "account": "1930", "external_closing_balance": "0.00 SEK", "evidence_document_ids": ["exact document_id"] }]
   },
   "review": {
@@ -213,6 +216,8 @@ Write one JSON object with no Markdown fences:
 \`\`\`
 
 For each authoritative PayrollAccountingFacts in upstream-results.json, payroll_postings must contain exactly one mapping. Copy its exact sealed ref and every fact_id, and select an account for every economic fact from previous State, approved history, current evidence, explicit policy, and Swedish bookkeeping knowledge. Do not copy or calculate payroll amounts; the trusted validator derives each debit or credit amount from the sealed facts. If no PayrollAccountingFacts exists, payroll_postings is an empty array.
+
+Open items make the period's outstanding claims legible. Every unpaid supplier invoice, every unpaid customer invoice, and every other current debt or claim against a named counterparty opens an item in the period whose document records it, and every payment settles the matching item, wholly or partly. Open an item even when the invoice is paid inside the same period: both the open and the settle change appear, so the ledger and the item list agree at every period end. The kinds are exactly supplier_payable, customer_receivable, other_current_payable, and other_current_receivable; payroll-derived items are produced by the trusted validator from sealed Payroll facts and must never be authored here. An item_id must be stable and derived from the source document, such as "supplier:130989" or "customer:2026-041", because a later period settles by exactly that id: items still open are listed in previous-state.json, so copy their item_id verbatim to settle them and never invent a new id for an existing debt. Tax and VAT settlement balances are not open items; they have no counterparty and the trusted validator already reports them.
 
 Every monetary amount is canonical Money: a major-unit decimal, one ASCII space, and the uppercase currency code. SEK always has exactly two decimals, including zero and whole-krona values, for example "0.00 SEK" and "48406.00 SEK". Never emit integer ore, JSON decimal numbers, grouping separators, or decimal commas.
 

@@ -34,6 +34,12 @@ function policies(overrides = {}) {
         output_accounts: ["2611"],
         settlement_account: "2650",
       },
+      open_items: {
+        supplier_payable: { accounts: ["2440"], side: "credit" },
+        customer_receivable: { accounts: ["1510"], side: "debit" },
+        other_current_payable: { accounts: ["2890", "2893"], side: "credit" },
+        other_current_receivable: { accounts: ["1680"], side: "debit" },
+      },
       ...(overrides.bookkeeping ?? {}),
     },
   };
@@ -331,6 +337,107 @@ test("Bookkeeping review requires exact single-line transaction-summary coverage
     () => assertBookkeepingReview({ ...review, transaction_summaries: [{ source_id: "T1", summary: "Två\nrader." }, review.transaction_summaries[1]] }, transactions),
     /must be one line/,
   );
+});
+
+// An unpaid supplier invoice: 4000 against 2440, with a matching open item.
+function unpaidPurchase() {
+  return {
+    source_id: "invoice-130989",
+    date: "2026-05-12",
+    description: "Leverantörsfaktura 130989",
+    lines: [
+      { account: "4000", account_name: "Inköp", debit: "9295.00 SEK", credit: "0.00 SEK" },
+      { account: "2440", account_name: "Leverantörsskulder", debit: "0.00 SEK", credit: "9295.00 SEK" },
+    ],
+  };
+}
+
+function openSupplierItem() {
+  return {
+    action: "open",
+    item_id: "supplier:130989",
+    kind: "supplier_payable",
+    party: "Leverantör AB",
+    amount: "9295.00 SEK",
+    due_date: "2026-06-11",
+    evidence_document_ids: [],
+  };
+}
+
+test("an open item that agrees with its mapped account raises no balance warning", async () => {
+  const outcome = await consolidate(makeCase({
+    structuredInput: input({ transactions: [unpaidPurchase()], open_item_changes: [openSupplierItem()] }),
+  }));
+  assert.equal(outcome.kind, "proposal");
+  const items = outcome.canonical_outputs.bookkeeping.open_items;
+  assert.equal(items.closing.length, 1);
+  assert.deepEqual(items.totals, { count: 1, by_kind: { supplier_payable: "9295.00 SEK" } });
+  assert.deepEqual(outcome.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH"), []);
+});
+
+test("an open item that disagrees with its mapped account warns without blocking the period", async () => {
+  // The debt is booked but no item records it: today's silent failure, now visible.
+  const outcome = await consolidate(makeCase({
+    structuredInput: input({ transactions: [unpaidPurchase()] }),
+  }));
+  assert.equal(outcome.kind, "proposal", "a balance disagreement must never discard the bookkeeping");
+  const warning = outcome.warnings.find((item) => item.code === "OPEN_ITEM_BALANCE_MISMATCH");
+  assert.ok(warning, "missing OPEN_ITEM_BALANCE_MISMATCH");
+  assert.match(warning.message, /supplier_payable uppgår till 0,00 kr medan konto 2440 visar 9 ?295,00 kr\./);
+});
+
+test("an open item carries forward and is settled by item_id in a later period", async () => {
+  const opened = await consolidate(makeCase({
+    structuredInput: input({ transactions: [unpaidPurchase()], open_item_changes: [openSupplierItem()] }),
+  }));
+  const carried = opened.projected_state.payload.open_items.items;
+  assert.equal(carried[0].item_id, "supplier:130989");
+  const settled = await consolidate(makeCase({
+    period: { id: "2026-06", kind: "ordinary", start: "2026-06-01", end: "2026-06-30" },
+    previousBookkeeping: {
+      ...bookkeepingState({
+        balances: [
+          { account: "1930", account_name: "Företagskonto", debit: "9295.00 SEK", credit: "0.00 SEK" },
+          { account: "2440", account_name: "Leverantörsskulder", debit: "0.00 SEK", credit: "9295.00 SEK" },
+        ],
+        openItems: carried,
+      }),
+      through_period_id: "2026-05",
+      through_date: "2026-05-31",
+    },
+    structuredInput: input({
+      period_id: "2026-06",
+      transactions: [{
+        source_id: "payment-130989",
+        date: "2026-06-05",
+        description: "Betalning av faktura 130989",
+        lines: [
+          { account: "2440", account_name: "Leverantörsskulder", debit: "9295.00 SEK", credit: "0.00 SEK" },
+          { account: "1930", account_name: "Företagskonto", debit: "0.00 SEK", credit: "9295.00 SEK" },
+        ],
+      }],
+      open_item_changes: [{ action: "settle", item_id: "supplier:130989", amount: "9295.00 SEK", evidence_document_ids: [] }],
+    }),
+  }));
+  assert.equal(settled.kind, "proposal", JSON.stringify(settled.questions ?? settled.reasons));
+  assert.deepEqual(settled.canonical_outputs.bookkeeping.open_items.closing, []);
+  assert.deepEqual(settled.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH"), []);
+});
+
+test("the open-item balance check is skipped without a mapping and rejects a malformed one", async () => {
+  const withoutMapping = policies();
+  delete withoutMapping.bookkeeping.open_items;
+  const unmapped = await consolidate(makeCase({
+    structuredInput: input({ transactions: [unpaidPurchase()] }),
+    effectivePolicies: withoutMapping,
+  }));
+  assert.equal(unmapped.kind, "proposal");
+  assert.deepEqual(unmapped.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH"), []);
+  const malformed = await consolidate(makeCase({
+    effectivePolicies: policies({ bookkeeping: { open_items: { supplier_payable: { accounts: ["244"], side: "credit" } } } }),
+  }));
+  assert.equal(malformed.kind, "out_of_scope");
+  assert.ok(malformed.reasons.some((reason) => reason.code === "INVALID_OPEN_ITEM_ACCOUNT_POLICY"));
 });
 
 test("deterministic summaries describe the period's bookkeeping in one status-neutral register", async () => {

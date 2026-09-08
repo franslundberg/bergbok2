@@ -6,6 +6,16 @@ export const PILOT_VAT_POLICY = Object.freeze({
   output_accounts: Object.freeze(["2611"]),
   settlement_account: "2650",
 });
+// Which BAS accounts each open-item kind must sum to, and the side it stands on. This is
+// controller configuration: it is always injected here, never read from the approved core
+// State and never supplied by the assessment, so the model cannot alter the check it is
+// measured against.
+export const PILOT_OPEN_ITEM_POLICY = Object.freeze({
+  supplier_payable: Object.freeze({ accounts: Object.freeze(["2440"]), side: "credit" }),
+  customer_receivable: Object.freeze({ accounts: Object.freeze(["1510"]), side: "debit" }),
+  other_current_payable: Object.freeze({ accounts: Object.freeze(["2890", "2893"]), side: "credit" }),
+  other_current_receivable: Object.freeze({ accounts: Object.freeze(["1680"]), side: "debit" }),
+});
 
 type VatReportingPolicy = {
   frequency: string;
@@ -47,6 +57,7 @@ export const effectivePoliciesForYear = (
       verification_series: "A",
       chart_of_accounts: chartOfAccounts,
       vat_reporting: structuredClone(vatReporting),
+      open_items: structuredClone(PILOT_OPEN_ITEM_POLICY),
     },
   };
 };

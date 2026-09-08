@@ -11,6 +11,7 @@ import {
   totalsForTransactions,
   validIsoDate,
 } from "./ledger.mjs";
+import { formatMoney } from "../../../../contracts/src/money.mjs";
 import { verifySealedContent } from "../../../../contracts/src/index.mjs";
 import {
   BOOKKEEPING_SCHEMA_VERSION,
@@ -187,6 +188,7 @@ export function evaluateBookkeeping({
     issues.push(issue("START_RECONCILIATIONS_NOT_ALLOWED", "Start must not contain reconciliations", "bookkeeping_input.reconciliations"));
   }
   const reconciliations = calculateReconciliations(input.mode === "start" ? [] : (input.reconciliations ?? []), closingBalances, new Set(documentIds), issues, warnings);
+  checkOpenItemBalances(openItems.closing, closingBalances, policy.bookkeeping?.open_items, policy.core.currency, warnings);
   const generatedDate = bounds.end ?? input.generated_date;
   if (!validIsoDate(generatedDate)) issues.push(issue("GENERATED_DATE_REQUIRED", "A valid Period end is required", "period.end"));
 
@@ -440,6 +442,31 @@ function applyOpenItemChanges(opening, rows, documentIds, issues) {
   const byKind = {};
   for (const item of closing) byKind[item.kind] = (byKind[item.kind] ?? 0n) + item.remaining_ore;
   return { changes, closing, totals: { count: closing.length, by_kind_ore: byKind } };
+}
+
+// An internal consistency check between two views the module itself produced: the itemised
+// open items and the accounts they must sum to. It therefore warns and never blocks, unlike a
+// reconciliation, where external evidence contradicts the ledger and a human must decide.
+function checkOpenItemBalances(closing, closingBalances, accountPolicy, currency, warnings) {
+  if (!isPlainObject(accountPolicy)) return;
+  for (const [kind, entry] of Object.entries(accountPolicy)) {
+    const items = closing.filter((item) => item.kind === kind);
+    const itemTotal = items.reduce((sum, item) => sum + item.remaining_ore, 0n);
+    const net = entry.accounts.reduce((sum, account) => sum + netBalanceForAccount(closingBalances, account), 0n);
+    const ledgerTotal = entry.side === "credit" ? -net : net;
+    if (itemTotal === ledgerTotal) continue;
+    const accounts = entry.accounts.join(", ");
+    warnings.push({
+      code: "OPEN_ITEM_BALANCE_MISMATCH",
+      message: `Öppna poster av typen ${kind} uppgår till ${displayOre(itemTotal, currency)} medan konto ${accounts} visar ${displayOre(ledgerTotal, currency)}.`,
+    });
+  }
+}
+
+function displayOre(value, currency) {
+  const amount = formatMoney(value, currency);
+  const [number] = amount.split(" ");
+  return `${number.replace(".", ",")} ${currency === "SEK" ? "kr" : currency}`;
 }
 
 function calculateReconciliations(rows, closingBalances, documentIds, issues, warnings) {

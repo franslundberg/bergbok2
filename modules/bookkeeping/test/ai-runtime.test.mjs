@@ -179,6 +179,9 @@ test("agent dispatches custom tools, replays call IDs, disables storage, and sto
   assert.match(bodies[0].instructions, /Prefer a stated assumption over a question/);
   assert.match(bodies[0].instructions, /absence of a document in the fixed Docset is itself evidence/);
   assert.match(bodies[0].instructions, /Choose needs_input only when no defensible treatment exists/);
+  // Open items must be created, not merely preserved, and settled by a stable id.
+  assert.match(bodies[0].instructions, /create the open items this period earns/);
+  assert.match(bodies[0].instructions, /Settle by the exact item_id carried in previous-state\.json/);
   assert.ok(bodies[1].input.some((item) => item.type === "function_call_output" && item.call_id === "call-shell"));
 });
 

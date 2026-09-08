@@ -308,6 +308,12 @@ function bookkeepingPolicies() {
     bookkeeping: {
       profile: "se-private-ab-invoice-calendar-demo-v1",
       verification_series: "A",
+      open_items: {
+        supplier_payable: { accounts: ["2440"], side: "credit" },
+        customer_receivable: { accounts: ["1510"], side: "debit" },
+        other_current_payable: { accounts: ["2890", "2893"], side: "credit" },
+        other_current_receivable: { accounts: ["1680"], side: "debit" },
+      },
       ...bookkeepingCorePolicy(),
     },
   };
