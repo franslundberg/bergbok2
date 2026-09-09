@@ -30,7 +30,7 @@ test("live Fiktiv AB files reach approved State in period order", { skip: !enabl
   process.env.BERGBOK_OWNER_EMAIL = session.email;
   try {
     const database = createDatabase(":memory:");
-    for (const periodId of ["Start", "2026-05", "2026-06"]) {
+    for (const periodId of ["Uppstart", "2026-05", "2026-06"]) {
       const directory = path.join(fixtureRoot, periodId);
       const filenames = (await readdir(directory)).sort();
       for (const filename of filenames) {

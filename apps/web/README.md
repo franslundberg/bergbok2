@@ -28,10 +28,10 @@ period's Underlag in the workbench. Drop files in the workbench, or use the
 composer upload button, to assign them to the selected period. The same work
 can be driven from the conversation, for example:
 
-- `Visa underlagen för Start`
+- `Visa underlagen för Uppstart`
 - `Lägg till en anteckning till bolaget-fiktiv.md: ...`
 - `Ta bort dokumentet ...`
-- `Bokför Start`
+- `Bokför Uppstart`
 
 Viewing, editing, removal, bookkeeping and change requests can be requested in
 chat. The first WorkContext version is bookkeeping-only: `documents`, `review`,
@@ -44,7 +44,7 @@ details. The same immutable snapshot can be downloaded as canonical JSON or a
 fully expanded PDF. Approving a proposal always requires the explicit
 `Godkänn` button outside the report in the right-hand workbench.
 
-The Start assessment must extract Fiktiv AB's quarterly VAT cadence and account
+The Uppstart assessment must extract Fiktiv AB's quarterly VAT cadence and account
 configuration from evidence. Approval stores that policy in company core
 State. May therefore shows the April–June cycle as not due, while June is due
 and must include the declaration assessment and VAT closing entry.
@@ -64,7 +64,7 @@ npm run build
 The paid, nondeterministic walkthrough is opt-in. After the Bookkeeping and
 chat images are available, `npm run test:live` uploads the repository's real
 Fiktiv AB PDF/Markdown files through the same trusted intake function and
-requires Start, May, and June to become approved in order. It is never part of
+requires Uppstart, May, and June to become approved in order. It is never part of
 the default suite.
 
 The web UI polls durable jobs while assistant responses stream. A failed or

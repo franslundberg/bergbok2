@@ -19,8 +19,8 @@ Options:
   --actor NAME           Approver; default: Filippa Stark
   --allow-web            Enable filtered public egress for the document worker
 
-Without arguments, a new Fiktiv AB workspace is created with Start, 2026-05,
-2026-06, 2026-07, and 2026-08 Documents, and only Start is run. Fixture
+Without arguments, a new Fiktiv AB workspace is created with Uppstart, 2026-05,
+2026-06, 2026-07, and 2026-08 Documents, and only Uppstart is run. Fixture
 periods use their stored dates, so ordinary fixture runs need only --period.
 Approval is always separate.
 `;

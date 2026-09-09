@@ -48,9 +48,9 @@ async function createInitialWorkspace(kind, options) {
       ?? DEFAULT_START_DATE,
   );
   const companyId = options.companyId ?? `local-${path.basename(output)}`;
-  const initialPeriod = fixturePeriods?.[0] ?? { id: kind === "start" ? "Start" : "Import", kind, end: previousDate(startDate) };
+  const initialPeriod = fixturePeriods?.[0] ?? { id: kind === "start" ? "Uppstart" : "Import", kind, end: previousDate(startDate) };
   if (fixturePeriods && initialPeriod.end !== previousDate(startDate)) {
-    throw new Error("Fixture Start period must end on the day before the first ordinary period");
+    throw new Error("Fixture Uppstart period must end on the day before the first ordinary period");
   }
   const documentsRoot = path.join(output, "documents");
   await mkdir(documentsRoot, { recursive: true });
@@ -61,7 +61,7 @@ async function createInitialWorkspace(kind, options) {
     }
   } else {
     await copyVisibleDocset(
-      options.docset ? path.resolve(options.docset) : path.join(FIXTURE, "Start"),
+      options.docset ? path.resolve(options.docset) : path.join(FIXTURE, "Uppstart"),
       path.join(documentsRoot, initialPeriod.id),
     );
   }

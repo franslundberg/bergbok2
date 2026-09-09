@@ -198,9 +198,9 @@ test("WorkContext validates activities, objects and domain compatibility", () =>
         activity: "review",
         object: { kind: "run", id: "run-1" },
       },
-      "Start",
+      "Uppstart",
     ),
-    documentsContext("fiktiv-ab", "Start"),
+    documentsContext("fiktiv-ab", "Uppstart"),
   );
 });
 
@@ -220,7 +220,7 @@ test("WorkContext restore falls back from invalid sessions to the active period"
     state: { sequence: 0, sha256: "a".repeat(64) },
     periods: [
       {
-        id: "Start",
+        id: "Uppstart",
         sequence: 1,
         kind: "start",
         start: null,
@@ -277,8 +277,8 @@ test("WorkContext restore falls back from invalid sessions to the active period"
 
 test("database bootstraps Fiktiv AB with three empty periods", () => {
   const database = createDatabase(":memory:");
-  assert.deepEqual(periodValue("Start", database), {
-    id: "Start",
+  assert.deepEqual(periodValue("Uppstart", database), {
+    id: "Uppstart",
     kind: "start",
     end: "2026-05-11",
   });
@@ -300,14 +300,14 @@ test("a completed chat tool can navigate the work context only once", () => {
     workContext: {
       companyId: "fiktiv-ab",
       area: "bookkeeping",
-      periodId: "Start",
+      periodId: "Uppstart",
       activity: "documents",
     },
   };
   assert.deepEqual(claimWorkContextNavigation(handled, "call-1", periodResult), {
     companyId: "fiktiv-ab",
     area: "bookkeeping",
-    periodId: "Start",
+    periodId: "Uppstart",
     activity: "documents",
   });
   assert.equal(
@@ -321,7 +321,7 @@ test("a completed chat tool can navigate the work context only once", () => {
       workContext: {
         companyId: "fiktiv-ab",
         area: "bookkeeping",
-        periodId: "Start",
+        periodId: "Uppstart",
         activity: "review",
         object: { kind: "run", id: "run-1" },
       },
@@ -329,7 +329,7 @@ test("a completed chat tool can navigate the work context only once", () => {
     {
       companyId: "fiktiv-ab",
       area: "bookkeeping",
-      periodId: "Start",
+      periodId: "Uppstart",
       activity: "review",
       object: { kind: "run", id: "run-1" },
     },
@@ -390,11 +390,11 @@ test("real upload remains unassigned until explicit confirmation", async () => {
     let summary = await companySummary(database);
     assert.equal(summary.periods[0].uploadCount, 0);
     const assigned = await assignUpload(session, uploaded.id, "assign", database);
-    assert.equal(assigned.periodId, "Start");
+    assert.equal(assigned.periodId, "Uppstart");
     summary = await companySummary(database);
     assert.equal(summary.periods[0].uploadCount, 1);
     assert.equal(summary.periods[1].status, "locked");
-    const job = enqueueRun(session, "Start", database);
+    const job = enqueueRun(session, "Uppstart", database);
     assert.equal(job.status, "queued");
     assert.equal(claimJob(database)?.id, job.id);
   } finally {
@@ -410,12 +410,12 @@ test("an upload explicitly targeted at the selected period is assigned there", a
     const database = createDatabase(":memory:");
     database
       .prepare(
-        "INSERT INTO bookkeeping_jobs (id,company_id,period_id,status,created_by,created_at,finished_at,run_id) VALUES ('selected-job','fiktiv-ab','Start','proposal','owner-1',1,1,'selected-run')",
+        "INSERT INTO bookkeeping_jobs (id,company_id,period_id,status,created_by,created_at,finished_at,run_id) VALUES ('selected-job','fiktiv-ab','Uppstart','proposal','owner-1',1,1,'selected-run')",
       )
       .run();
     database
       .prepare(
-        "INSERT INTO bookkeeping_runs (id,company_id,period_id,job_id,outcome_kind,run_ref_json,run_sha256,decision,decided_at,created_at) VALUES ('selected-run','fiktiv-ab','Start','selected-job','proposal','{}',?,'approved',2,1)",
+        "INSERT INTO bookkeeping_runs (id,company_id,period_id,job_id,outcome_kind,run_ref_json,run_sha256,decision,decided_at,created_at) VALUES ('selected-run','fiktiv-ab','Uppstart','selected-job','proposal','{}',?,'approved',2,1)",
       )
       .run("a".repeat(64));
     const uploaded = await receiveUpload(
@@ -427,7 +427,7 @@ test("an upload explicitly targeted at the selected period is assigned there", a
     assert.equal(uploaded.status, "assigned");
     const summary = await companySummary(database);
     assert.equal(summary.periods.find(({ id }) => id === "2026-05")?.uploadCount, 1);
-    assert.equal(summary.periods.find(({ id }) => id === "Start")?.uploadCount, 0);
+    assert.equal(summary.periods.find(({ id }) => id === "Uppstart")?.uploadCount, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -442,7 +442,7 @@ test("database migration backfills legacy assigned documents", async () => {
     CREATE TABLE companies (id TEXT PRIMARY KEY,name TEXT NOT NULL,language TEXT NOT NULL,created_at INTEGER NOT NULL) STRICT;
     INSERT INTO companies VALUES ('fiktiv-ab','Fiktiv AB','sv',1);
     CREATE TABLE uploads (id TEXT PRIMARY KEY,company_id TEXT NOT NULL,log_item_id TEXT NOT NULL UNIQUE,filename TEXT NOT NULL,media_type TEXT NOT NULL,sha256 TEXT NOT NULL,byte_length INTEGER NOT NULL,status TEXT NOT NULL CHECK(status IN ('unassigned','assigned','ignored')),period_id TEXT,document_id TEXT,duplicate_of TEXT,created_by TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL) STRICT;
-    INSERT INTO uploads VALUES ('source','fiktiv-ab','log','legacy.pdf','application/pdf','${"a".repeat(64)}',10,'assigned','Start','doc-1',NULL,'owner',1,1);
+    INSERT INTO uploads VALUES ('source','fiktiv-ab','log','legacy.pdf','application/pdf','${"a".repeat(64)}',10,'assigned','Uppstart','doc-1',NULL,'owner',1,1);
   `);
   legacy.close();
   try {
@@ -476,58 +476,58 @@ test("active Underlag supports direct upload, duplicates, notes, replacement and
       session,
       new File(["Originalt underlag\n"], "underlag.md", { type: "text/markdown" }),
       database,
-      "Start",
+      "Uppstart",
     );
     assert.equal(uploaded.status, "assigned");
-    let detail = await periodDetail("Start", database);
+    let detail = await periodDetail("Uppstart", database);
     assert.equal(detail.documents.length, 1);
 
     const duplicate = await receiveUpload(
       session,
       new File(["Originalt underlag\n"], "kopia.md", { type: "text/markdown" }),
       database,
-      "Start",
+      "Uppstart",
     );
     assert.equal(duplicate.status, "unassigned");
     assert.ok(duplicate.duplicateOf);
-    detail = await periodDetail("Start", database);
+    detail = await periodDetail("Uppstart", database);
     assert.equal(detail.pendingUploads.length, 1);
     await assignUpload(session, duplicate.id, "ignore", database);
 
     const authored = await createTextDocument(
       session,
-      "Start",
+      "Uppstart",
       "egen-uppgift",
       "# Uppgift\n\nFaktureringsmetoden används.\n",
       database,
     );
     const note = await addDocumentNote(
       session,
-      "Start",
+      "Uppstart",
       String(uploaded.documentId),
       "Kontrollerad mot avtalet.",
       database,
     );
-    const parent = await documentDetail("Start", String(uploaded.documentId), database);
+    const parent = await documentDetail("Uppstart", String(uploaded.documentId), database);
     assert.equal(parent.notes[0].id, note.documentId);
 
     const replaced = await replaceTextDocument(
       session,
-      "Start",
+      "Uppstart",
       String(authored.documentId),
       "# Uppdaterad uppgift\n",
       database,
     );
-    detail = await periodDetail("Start", database);
+    detail = await periodDetail("Uppstart", database);
     assert.ok(!detail.documents.some((document) => document.id === authored.documentId));
     assert.ok(detail.documents.some((document) => document.id === replaced.documentId));
     await assert.rejects(
-      replaceTextDocument(session, "Start", String(uploaded.documentId), "försök", database),
+      replaceTextDocument(session, "Uppstart", String(uploaded.documentId), "försök", database),
       /Uppladdade original/,
     );
 
-    await removePeriodDocument(session, "Start", replaced.documentId, database);
-    detail = await periodDetail("Start", database);
+    await removePeriodDocument(session, "Uppstart", replaced.documentId, database);
+    detail = await periodDetail("Uppstart", database);
     assert.ok(!detail.documents.some((document) => document.id === replaced.documentId));
     assert.equal(
       (
@@ -574,12 +574,12 @@ test("an unassigned upload does not supersede a proposal but a Docset change doe
     const database = createDatabase(":memory:");
     database
       .prepare(
-        "INSERT INTO bookkeeping_jobs (id,company_id,period_id,status,created_by,created_at,finished_at,run_id) VALUES ('job','fiktiv-ab','Start','proposal','owner',1,1,'run')",
+        "INSERT INTO bookkeeping_jobs (id,company_id,period_id,status,created_by,created_at,finished_at,run_id) VALUES ('job','fiktiv-ab','Uppstart','proposal','owner',1,1,'run')",
       )
       .run();
     database
       .prepare(
-        "INSERT INTO bookkeeping_runs (id,company_id,period_id,job_id,outcome_kind,run_ref_json,run_sha256,created_at) VALUES ('run','fiktiv-ab','Start','job','proposal','{}',?,1)",
+        "INSERT INTO bookkeeping_runs (id,company_id,period_id,job_id,outcome_kind,run_ref_json,run_sha256,created_at) VALUES ('run','fiktiv-ab','Uppstart','job','proposal','{}',?,1)",
       )
       .run("b".repeat(64));
     await receiveUpload(
@@ -595,7 +595,7 @@ test("an unassigned upload does not supersede a proposal but a Docset change doe
       ).superseded_at,
       null,
     );
-    await createTextDocument(session, "Start", "nytt.md", "Ny uppgift", database);
+    await createTextDocument(session, "Uppstart", "nytt.md", "Ny uppgift", database);
     assert.equal(
       typeof (
         database.prepare("SELECT superseded_at FROM bookkeeping_runs WHERE id='run'").get() as {
@@ -619,9 +619,9 @@ test("a chat change request rejects the exact current proposal with the user's n
       session,
       new File(["Startuppgift\n"], "start.md", { type: "text/markdown" }),
       database,
-      "Start",
+      "Uppstart",
     );
-    enqueueRun(session, "Start", database);
+    enqueueRun(session, "Uppstart", database);
     const job = claimJob(database);
     assert.ok(job);
     const processed = await processJob(job, database, async (caseBundle) => {
@@ -631,7 +631,7 @@ test("a chat change request rejects the exact current proposal with the user's n
           schema_id: "se.bergbok.bookkeeping-input",
           schema_version: "3.0",
           company_id: "fiktiv-ab",
-          period_id: "Start",
+          period_id: "Uppstart",
           mode: "start",
           organization: { name: "Fiktiv AB", organization_number: "559999-9999" },
           transactions: [],
@@ -648,7 +648,7 @@ test("a chat change request rejects the exact current proposal with the user's n
     });
     await requestProposalChanges(
       session,
-      "Start",
+      "Uppstart",
       "Organisationsnumret ska kontrolleras.",
       database,
     );
@@ -669,7 +669,7 @@ test("chat exposes mutations only on the first step and never exposes approval",
   const tools = createApplicationTools(session, {
     companyId: "fiktiv-ab",
     area: "bookkeeping",
-    periodId: "Start",
+    periodId: "Uppstart",
     activity: "documents",
   });
   assert.ok(MUTATION_TOOL_NAMES.every((name) => name in tools));
@@ -690,6 +690,8 @@ test("chat exposes mutations only on the first step and never exposes approval",
 
 test("clear bookkeeping chat commands select the trusted run tool", () => {
   assert.equal(isDirectBookkeepingCommand("Bokför 2026-05"), true);
+  assert.equal(isDirectBookkeepingCommand("Kan du bokföra perioden Uppstart?"), true);
+  // Databases seeded before the rename still hold "Start"; both must be recognised.
   assert.equal(isDirectBookkeepingCommand("Kan du bokföra perioden Start?"), true);
   assert.equal(isDirectBookkeepingCommand("Bokför den här perioden"), false);
   assert.equal(isDirectBookkeepingCommand("Hur bokför jag 2026-05?"), false);
@@ -698,7 +700,7 @@ test("clear bookkeeping chat commands select the trusted run tool", () => {
 test("chat context identifies the latest approved bookkeeping cutoff", () => {
   assert.deepEqual(
     approvedBookkeepingThrough([
-      { id: "Start", sequence: 1, status: "approved", end: "2026-05-11" },
+      { id: "Uppstart", sequence: 1, status: "approved", end: "2026-05-11" },
       { id: "2026-05", sequence: 2, status: "approved", end: "2026-05-31" },
       { id: "2026-06", sequence: 3, status: "approved", end: "2026-06-30" },
       { id: "2026-07", sequence: 4, status: "working", end: "2026-07-31" },
@@ -707,7 +709,7 @@ test("chat context identifies the latest approved bookkeeping cutoff", () => {
   );
   assert.equal(
     approvedBookkeepingThrough([
-      { id: "Start", sequence: 1, status: "preliminary", end: "2026-05-11" },
+      { id: "Uppstart", sequence: 1, status: "preliminary", end: "2026-05-11" },
     ]),
     null,
   );
@@ -717,7 +719,7 @@ test("job recovery fails abandoned work without retrying it", () => {
   const database = createDatabase(":memory:");
   database
     .prepare(
-      "INSERT INTO bookkeeping_jobs (id,company_id,period_id,status,created_by,created_at,heartbeat_at) VALUES ('job','fiktiv-ab','Start','running','owner',1,1)",
+      "INSERT INTO bookkeeping_jobs (id,company_id,period_id,status,created_by,created_at,heartbeat_at) VALUES ('job','fiktiv-ab','Uppstart','running','owner',1,1)",
     )
     .run();
   assert.equal(recoverStaleJobs(database, 200_000), 1);
@@ -744,7 +746,7 @@ test("worker records deterministic needs-input outcomes and timeline questions",
       database,
     );
     await assignUpload(session, uploaded.id, "assign", database);
-    enqueueRun(session, "Start", database);
+    enqueueRun(session, "Uppstart", database);
     const job = claimJob(database);
     assert.ok(job);
     assert.equal(
@@ -801,13 +803,13 @@ test("worker records deterministic needs-input outcomes and timeline questions",
   }
 });
 
-test("Start, May and June can be proposed, approved and rendered in order", async () => {
+test("Uppstart, May and June can be proposed, approved and rendered in order", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bergbok-web-continuity-test-"));
   process.env.BERGBOK_DATA_ROOT = root;
   process.env.BERGBOK_OWNER_EMAIL = session.email;
   try {
     const database = createDatabase(":memory:");
-    for (const periodId of ["Start", "2026-05", "2026-06"]) {
+    for (const periodId of ["Uppstart", "2026-05", "2026-06"]) {
       const uploaded = await receiveUpload(
         session,
         new File([`Underlag för ${periodId}\n`], `${periodId}.md`, { type: "text/markdown" }),
@@ -885,7 +887,7 @@ test("Start, May and June can be proposed, approved and rendered in order", asyn
         "proposal",
         `${periodId}: ${JSON.stringify(processed.outcome.questions ?? processed.outcome.reasons)}`,
       );
-      if (periodId === "Start") {
+      if (periodId === "Uppstart") {
         const source = await reviewContent(processed.runId, "json", database);
         assert.equal(JSON.parse(source.bytes.toString("utf8")).payload.contract_version, "2.0");
         const html = await reviewContent(processed.runId, "html", database);

@@ -26,7 +26,7 @@ test("the demo help documents Import and fixture Period runs", async () => {
   assert.match(messages.join("\n"), /import --start-date YYYY-MM-DD --docset DIR/);
   assert.match(messages.join("\n"), /run --workspace DIR --period ID/);
   assert.match(messages.join("\n"), /--period-start YYYY-MM-DD --period-end YYYY-MM-DD/);
-  assert.match(messages.join("\n"), /Start, 2026-05,[\s\S]*2026-08/);
+  assert.match(messages.join("\n"), /Uppstart, 2026-05,[\s\S]*2026-08/);
 });
 
 test("the Fiktiv fixture catalog publishes July and August", async () => {
@@ -38,7 +38,7 @@ test("the Fiktiv fixture catalog publishes July and August", async () => {
     end,
     documents,
   })), [
-    { id: "Start", kind: "start", end: "2026-05-11", documents: "Start" },
+    { id: "Uppstart", kind: "start", end: "2026-05-11", documents: "Uppstart" },
     { id: "2026-05", kind: "ordinary", start: "2026-05-12", end: "2026-05-31", documents: "2026-05" },
     { id: "2026-06", kind: "ordinary", start: "2026-06-01", end: "2026-06-30", documents: "2026-06" },
     { id: "2026-07", kind: "ordinary", start: "2026-07-01", end: "2026-07-31", documents: "2026-07" },
@@ -47,7 +47,7 @@ test("the Fiktiv fixture catalog publishes July and August", async () => {
 });
 
 test("catalogued Periods use fixture dates while custom Periods require explicit dates", () => {
-  const initial = { id: "Start", kind: "start", end: "2026-05-11" };
+  const initial = { id: "Uppstart", kind: "start", end: "2026-05-11" };
   const workspace = {
     initial_period: initial,
     demo_periods: [initial, { id: "2026-06", kind: "ordinary", start: "2026-06-01", end: "2026-06-30" }],

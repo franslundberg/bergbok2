@@ -77,7 +77,7 @@ export const activeToolsForStep = (stepNumber: number) =>
     : (["shell", ...NAVIGATION_TOOL_NAMES] as const);
 
 export const isDirectBookkeepingCommand = (text: string) =>
-  /^(?:(?:kan|skulle) du\s+bokföra|(?:vänligen\s+)?bokför)(?:\s+bokföringen\s+för|\s+perioden)?\s+(?:start|\d{4}-(?:0[1-9]|1[0-2]))[.!?]*$/iu.test(
+  /^(?:(?:kan|skulle) du\s+bokföra|(?:vänligen\s+)?bokför)(?:\s+bokföringen\s+för|\s+perioden)?\s+(?:(?:upp)?start|\d{4}-(?:0[1-9]|1[0-2]))[.!?]*$/iu.test(
     text.trim(),
   );
 
