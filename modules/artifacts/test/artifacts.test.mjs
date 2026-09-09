@@ -43,7 +43,7 @@ async function bookkeepingSnapshot(status = "preliminary", language = "en") {
         { account: "1930", account_name: "Bank", debit: "0.00 SEK", credit: "25.00 SEK" },
       ],
     }],
-    open_item_changes: [{ action: "open", item_id: "supplier:coffee", date: "2026-05-12", kind: "supplier_payable", party: "Café AB", amount: "25.00 SEK", due_date: "2026-05-31", evidence_document_ids: ["receipt.pdf"] }],
+    open_item_changes: [{ action: "open", item_id: "supplier:coffee", date: "2026-05-12", transaction_source_id: "coffee-1", kind: "supplier_payable", party: "Café AB", amount: "25.00 SEK", due_date: "2026-05-31", evidence_document_ids: ["receipt.pdf"] }],
     reconciliations: [{ account: "1930", external_closing_balance: "475.00 SEK", evidence_document_ids: ["receipt.pdf"] }],
   };
   const documents = [
@@ -225,8 +225,8 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.equal(model.header.identity, "Example Ångström AB · 559999-9999 · Created 31 March 2026");
   assert.equal(model.header.context, "1–31 May 2026 · Proposal");
   assert.deepEqual(model.sections.map((section) => section.id), [
-    "summary", "core", "transactions", "open_items", "balances",
-    "verification", "reconciliations", "vat", "evidence", "provenance",
+    "summary", "core", "transactions", "reconciliations", "open_items",
+    "verification", "vat", "balances", "evidence", "provenance",
   ]);
   assert.equal(Object.hasOwn(model.transactions[0], "description"), false);
   const source = await render(snapshot, "report-source-json-v1");
@@ -246,11 +246,15 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.match(html, /<td>2081<\/td><td>Share capital<\/td><td class="money">-500\.00<\/td>.*<td class="money">-500\.00<\/td>/);
   assert.match(html, /<td><code>7690<\/code><\/td><td>Other personnel costs<\/td><td class="money">25\.00<\/td><td class="money">0\.00<\/td>/);
   assert.doesNotMatch(html, /SEK\u00a0[\d,.]+ (Debit|Credit)/);
-  assert.match(html, /Verification series A · A8 · 1 entry/);
-  // Öppna poster: the change carries its date, the closing item the day it was opened.
-  assert.match(html, /<th>Date<\/th><th>Action<\/th><th>Item ID<\/th>/);
+  assert.match(html, /1 entry · A8/);
+  // Open items: Kvarstående poster reads as one sentence per item, linking to the
+  // verification that created it; the raw open/settle log is folded into a details block.
+  assert.match(html, /<p class="section-meta">Debts and claims unpaid at the end of the period\.<\/p><ul class="list"><li>Debt of SEK\u00a025\.00 to Café AB\. Due date: 2026-05-31\. See <a href="#verifikation-A8">A8<\/a>\.<\/li><\/ul>/);
+  assert.match(html, /<details><summary>Details \(1\)<\/summary>/);
   assert.match(html, /<td>2026-05-12<\/td><td>open<\/td><td>supplier:coffee<\/td>/);
-  assert.match(html, /<th class="money">Remaining<\/th><th>Opened<\/th><th>Due date<\/th>/);
+  // Reconciliation status is translated, not the raw canonical enum value.
+  assert.match(html, /<td>1930<\/td><td>Reconciled<\/td>/);
+  assert.doesNotMatch(html, />reconciled</);
   assert.match(html, /No input or output VAT was posted in the period\. The period is part of the VAT period 1 April–30 June 2026; no VAT return is due in May 2026\./);
   assert.doesNotMatch(html, /Quarterly|2641|2611|2650/);
   assert.match(html, /Content-Security-Policy/);
@@ -261,8 +265,8 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.doesNotMatch(html, /<h2>Summary<\/h2>/);
   assert.match(html, /<section class="report-summary"><p>The bookkeeping for 2026-05 contains 1 verification \(A8\) totalling SEK 25\.00\./);
   const headings = [
-    "Bookkeeping transactions", "Open items", "Account balances",
-    "Reconciliations", "VAT", "Debug",
+    "Bookkeeping transactions", "Reconciliations", "Open items",
+    "VAT", "Account balances", "Debug",
   ];
   let previousIndex = -1;
   for (const heading of headings) {
@@ -389,7 +393,7 @@ test("the PDF contains the reader-facing report with Unicode text", async () => 
   assert.match(text, /Other personnel costs/);
   assert.match(text, /supplier:coffee/);
   assert.match(text, /1930/);
-  assert.match(text, /Verification series A · A8 · 1 entry/);
+  assert.match(text, /1 entry · A8/);
   assert.match(compactText, /No input or output VAT was posted in the period\. The period is part of the VAT period 1 April–30 June 2026; no VAT return is due in May 2026\./);
   assert.doesNotMatch(text, /Quarterly|2641|2611|2650/);
   assert.doesNotMatch(text.slice(text.lastIndexOf("\nVAT\n")), /2026-04-01|2026-06-30/);
@@ -480,6 +484,7 @@ test("unapproved reports are explicitly marked and approved reports are not", as
   assert.match(preview, /Ingenting har godkänts/);
   assert.match(preview, /Ingen ingående eller utgående moms bokfördes i perioden/);
   assert.doesNotMatch(preview, /Kvartalsvis/);
+  assert.match(preview, /<td>1930<\/td><td>Avstämd<\/td>/);
   const approved = artifactBytes((await render(await bookkeepingSnapshot("approved", "sv"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.match(approved, /1–31 maj 2026 · Godkänd version 1/);
   assert.match(approved, /25,00\u00a0kr/);
@@ -560,7 +565,7 @@ test("needs-input and out-of-scope outcomes use the same complete report pipelin
   const needsHtml = artifactBytes((await render(await classifiedSnapshot("needs_input"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
   assert.match(needsHtml, /Frågor, varningar och orsaker/);
   assert.match(needsHtml, /Vilket belopp gäller\?/);
-  assert.match(needsHtml, /Bokföringstransaktioner<\/h2><p class="empty">Inga\.<\/p>/);
+  assert.match(needsHtml, /Verifikationer<\/h2><p class="empty">Inga\.<\/p>/);
   assert.match(needsHtml, /Öppna poster<\/h2><p>Inga öppna poster vid periodens slut\.<\/p>/);
   assert.doesNotMatch(needsHtml, /Förändringar<\/h3>|Kvarstående poster<\/h3>/);
 

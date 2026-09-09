@@ -55,16 +55,19 @@ const LABELS = Object.freeze({
     cash: "kontantmetoden",
     moduleBookkeeping: "Bokföring",
     modulePayroll: "Lön",
-    transactions: "Bokföringstransaktioner",
+    transactions: "Verifikationer",
     openItems: "Öppna poster",
     openItemChanges: "Förändringar",
-    closingOpenItems: "Kvarstående poster",
+    closingOpenItems: "Skulder och fordringar som är obetalda vid periodens slut.",
     noOpenItemsAtPeriodEnd: "Inga öppna poster vid periodens slut.",
     balances: "Kontosaldon",
     verification: "Verifikationsserie",
     verificationSingular: "verifikation",
     verificationPlural: "verifikationer",
     reconciliations: "Avstämningar",
+    reconciled: "Avstämd",
+    mismatched: "Avviker",
+    missing_evidence: "Underlag saknas",
     vat: "Moms",
     evidence: "Underlag",
     provenance: "Debug",
@@ -89,6 +92,13 @@ const LABELS = Object.freeze({
     remaining: "Kvar",
     openedDate: "Öppnad",
     dueDate: "Förfallodatum",
+    openItemPayable: "Skuld",
+    openItemReceivable: "Fordran",
+    openItemAmountPrefix: "på",
+    openItemPayableParty: "till",
+    openItemReceivableParty: "på",
+    openItemSeePrefix: "Se",
+    openItemHistory: "Detaljer",
     status: "Status",
     external: "Externt saldo",
     ledger: "Bokfört saldo",
@@ -157,13 +167,16 @@ const LABELS = Object.freeze({
     transactions: "Bookkeeping transactions",
     openItems: "Open items",
     openItemChanges: "Changes",
-    closingOpenItems: "Closing items",
+    closingOpenItems: "Debts and claims unpaid at the end of the period.",
     noOpenItemsAtPeriodEnd: "No open items at the end of the period.",
     balances: "Account balances",
     verification: "Verification series",
     verificationSingular: "entry",
     verificationPlural: "entries",
     reconciliations: "Reconciliations",
+    reconciled: "Reconciled",
+    mismatched: "Mismatched",
+    missing_evidence: "Evidence missing",
     vat: "VAT",
     evidence: "Evidence",
     provenance: "Debug",
@@ -188,6 +201,13 @@ const LABELS = Object.freeze({
     remaining: "Remaining",
     openedDate: "Opened",
     dueDate: "Due date",
+    openItemPayable: "Debt",
+    openItemReceivable: "Claim",
+    openItemAmountPrefix: "of",
+    openItemPayableParty: "to",
+    openItemReceivableParty: "on",
+    openItemSeePrefix: "See",
+    openItemHistory: "Details",
     status: "Status",
     external: "External balance",
     ledger: "Ledger balance",
@@ -273,7 +293,10 @@ export function buildReportModel(snapshot) {
   const coreFacts = core ? buildCoreFacts(core, labels) : [];
   const openItemChanges = proposal ? (bookkeeping.open_items?.changes ?? []).map(normalizeOpenItemChange) : [];
   const closingOpenItems = proposal ? (bookkeeping.open_items?.closing ?? []).map(normalizeOpenItem) : [];
-  const reconciliations = proposal ? (bookkeeping.reconciliations ?? []).map((item) => ({ ...item })) : [];
+  const reconciliations = proposal ? (bookkeeping.reconciliations ?? []).map((item) => ({
+    ...item,
+    statusDisplay: translate(item.status, item.status, labels),
+  })) : [];
   const vat = proposal ? {
     ...bookkeeping.vat_period,
     hasActivity: hasVatActivity(bookkeeping),
@@ -329,6 +352,7 @@ export function buildReportModel(snapshot) {
     }] : []),
     { id: "core", kind: "field_groups", title: labels.core, lead: labels.coreLead, groups: coreFacts, emptyText: labels.none },
     { id: "transactions", kind: "transactions", title: labels.transactions, items: transactions, emptyText: labels.none },
+    { id: "reconciliations", kind: "reconciliations", title: labels.reconciliations, items: reconciliations, emptyText: labels.none },
     {
       id: "open_items",
       kind: "open_items",
@@ -339,10 +363,9 @@ export function buildReportModel(snapshot) {
       ],
       emptyText: labels.none,
     },
-    { id: "balances", kind: "balances", title: labels.balances, items: balances, emptyText: labels.none },
     { id: "verification", kind: "verification", title: labels.verification, value: verification, emptyText: labels.none },
-    { id: "reconciliations", kind: "reconciliations", title: labels.reconciliations, items: reconciliations, emptyText: labels.none },
     { id: "vat", kind: "vat", title: labels.vat, value: vat, emptyText: labels.none },
+    { id: "balances", kind: "balances", title: labels.balances, items: balances, emptyText: labels.none },
     { id: "evidence", kind: "simple_rows", title: labels.evidence, rows: evidence, emptyText: labels.none },
     { id: "provenance", kind: "preformatted", title: labels.provenance, value: prettyCanonicalJson(outcome.provenance ?? {}) },
   ];
@@ -671,18 +694,26 @@ function normalizeOpenItemChange(item) {
     party: item.party ?? null,
     amount: item.amount ?? null,
     dueDate: item.due_date ?? null,
+    verificationId: item.verification_id ?? null,
     evidenceDocumentIds: [...(item.evidence_document_ids ?? [])],
   };
 }
+
+// Money display formatting is a renderer concern (each of HTML and PDF has its own
+// language-aware formatMoneyDisplay), so the model exposes structure — which noun and
+// party preposition this kind takes — rather than a pre-rendered sentence.
+const PAYABLE_KINDS = new Set(["supplier_payable", "related_party_payable", "other_current_payable"]);
 
 function normalizeOpenItem(item) {
   return {
     itemId: item.item_id,
     kind: item.kind,
+    isPayable: PAYABLE_KINDS.has(item.kind),
     party: item.party,
     remaining: item.remaining,
     openedDate: item.opened_date ?? null,
     dueDate: item.due_date ?? null,
+    openedVerificationId: item.opened_verification_id ?? null,
     evidenceDocumentIds: [...(item.evidence_document_ids ?? [])],
   };
 }

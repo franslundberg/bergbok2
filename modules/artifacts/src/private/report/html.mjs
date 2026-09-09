@@ -67,8 +67,8 @@ function transactions(section, model) {
   const last = verification.closingLastNumber;
   const range = first === last ? `${verification.series}${first}` : `${verification.series}${first}–${verification.series}${last}`;
   const countLabel = section.items.length === 1 ? l.verificationSingular : l.verificationPlural;
-  const series = `<p class="section-meta">${escape(l.verification)} ${escape(verification.series)} · ${escape(range)} · ${section.items.length} ${escape(countLabel)}</p>`;
-  return series + section.items.map((item) => `<details>
+  const series = `<p class="section-meta">${section.items.length} ${escape(countLabel)} · ${escape(range)}</p>`;
+  return series + section.items.map((item) => `<details id="${escape(verificationAnchor(item.verificationId))}">
 <summary><strong>${escape(item.verificationId)}</strong><span>${escape(item.date)}</span><span>${escape(item.summary)}</span><span class="amount money">${escape(formatMoneyDisplay(item.total, model.language))}</span></summary>
 <div class="detail">
 <dl class="meta">${meta(l.sourceId, item.sourceId)}${meta(l.evidenceIds, item.evidenceDocumentIds.join(", ") || l.none)}</dl>
@@ -84,17 +84,41 @@ function openItems(section, model) {
   if (!changesGroup.items.length && !closingGroup.items.length) {
     return `<p>${escape(l.noOpenItemsAtPeriodEnd)}</p>`;
   }
-  const changes = changesGroup.items.length ? `<h3>${escape(changesGroup.title)}</h3>${table(
+  const knownVerifications = new Set(model.transactions.map((item) => item.verificationId));
+  const closing = closingGroup.items.length
+    ? `<p class="section-meta">${escape(closingGroup.title)}</p><ul class="list">${closingGroup.items.map((item) => `<li>${escape(openItemSentence(item, l, model.language))}${openItemReference(item.openedVerificationId, knownVerifications, l)}</li>`).join("")}</ul>`
+    : `<p class="section-meta">${escape(closingGroup.title)}</p>${empty(section.emptyText)}`;
+  const changes = changesGroup.items.length ? `<details><summary>${escape(l.openItemHistory)} (${changesGroup.items.length})</summary>${table(
     [l.date, l.action, l.itemId, l.kind, l.party, l.total, l.dueDate, l.evidenceIds],
     changesGroup.items.map((item) => [item.date, item.action, item.itemId, item.kind, item.party, item.amount, item.dueDate, item.evidenceDocumentIds.join(", ")]),
     [false, false, false, false, false, true, false, false], model.language,
-  )}` : `<h3>${escape(changesGroup.title)}</h3>${empty(section.emptyText)}`;
-  const closing = closingGroup.items.length ? `<h3>${escape(closingGroup.title)}</h3>${table(
-    [l.itemId, l.kind, l.party, l.remaining, l.openedDate, l.dueDate, l.evidenceIds],
-    closingGroup.items.map((item) => [item.itemId, item.kind, item.party, item.remaining, item.openedDate, item.dueDate, item.evidenceDocumentIds.join(", ")]),
-    [false, false, false, true, false, false, false], model.language,
-  )}` : `<h3>${escape(closingGroup.title)}</h3>${empty(section.emptyText)}`;
-  return `${changes}${closing}`;
+  )}</details>` : "";
+  return `${closing}${changes}`;
+}
+
+// A verification is only worth linking when it appears in this same report; a period earlier
+// than the one being rendered carries no anchor to jump to.
+// "Skuld på 9 295,00 kr till Bolagsstiftarna AB. Förfallodatum: 2026-06-01." The "Se A1"
+// reference is appended separately by the caller, since only it knows whether the
+// verification can be linked in this document.
+function openItemSentence(item, labels, language) {
+  const noun = item.isPayable ? labels.openItemPayable : labels.openItemReceivable;
+  const preposition = item.isPayable ? labels.openItemPayableParty : labels.openItemReceivableParty;
+  const parts = [`${noun} ${labels.openItemAmountPrefix} ${formatMoneyDisplay(item.remaining, language)} ${preposition} ${item.party}.`];
+  if (item.dueDate) parts.push(`${labels.dueDate}: ${item.dueDate}.`);
+  return parts.join(" ");
+}
+
+function openItemReference(verificationId, knownVerifications, labels) {
+  if (!verificationId) return "";
+  const target = knownVerifications.has(verificationId)
+    ? `<a href="#${escape(verificationAnchor(verificationId))}">${escape(verificationId)}</a>`
+    : escape(verificationId);
+  return ` ${escape(labels.openItemSeePrefix)} ${target}.`;
+}
+
+function verificationAnchor(verificationId) {
+  return `verifikation-${verificationId}`;
 }
 
 function balances(section, model) {
@@ -125,7 +149,7 @@ function reconciliations(section, model) {
   if (!section.items.length) return empty(section.emptyText);
   return table(
     [l.account, l.status, l.ledger, l.external, l.evidenceIds],
-    section.items.map((item) => [item.account, item.status, item.ledger_closing_balance, item.external_closing_balance, (item.evidence_document_ids ?? []).join(", ")]),
+    section.items.map((item) => [item.account, item.statusDisplay, item.ledger_closing_balance, item.external_closing_balance, (item.evidence_document_ids ?? []).join(", ")]),
     [false, false, true, true, false], model.language,
   );
 }

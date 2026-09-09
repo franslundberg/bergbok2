@@ -183,7 +183,7 @@ export function evaluateBookkeeping({
   if (input.mode !== "ordinary" && rawOpenItemChanges.length > 0) {
     issues.push(issue("OPEN_ITEM_CHANGES_NOT_ALLOWED", `${input.mode} must not contain open-item changes`, "bookkeeping_input.open_item_changes"));
   }
-  const openItems = applyOpenItemChanges(openingItems, rawOpenItemChanges, new Set(documentIds), issues);
+  const openItems = applyOpenItemChanges(openingItems, rawOpenItemChanges, new Set(documentIds), transactions, issues);
   if (input.mode === "start" && hasContent(input.reconciliations)) {
     issues.push(issue("START_RECONCILIATIONS_NOT_ALLOWED", "Start must not contain reconciliations", "bookkeeping_input.reconciliations"));
   }
@@ -374,6 +374,7 @@ function normalizeExistingOpenItems(rows, label, issues) {
       original_amount_ore: row.original_amount_ore ?? remaining,
       remaining_ore: remaining,
       ...(row.opened_date ? { opened_date: row.opened_date } : {}),
+      ...(row.opened_verification_id ? { opened_verification_id: row.opened_verification_id } : {}),
       ...(row.due_date ? { due_date: row.due_date } : {}),
       evidence_document_ids: Array.isArray(row.evidence_document_ids) ? [...row.evidence_document_ids] : [],
       origin: row.origin ?? "previous_state",
@@ -382,8 +383,11 @@ function normalizeExistingOpenItems(rows, label, issues) {
   return result.sort((left, right) => left.item_id.localeCompare(right.item_id));
 }
 
-function applyOpenItemChanges(opening, rows, documentIds, issues) {
+function applyOpenItemChanges(opening, rows, documentIds, transactions, issues) {
   const items = new Map(opening.map((item) => [item.item_id, { ...item }]));
+  // Lets the report point at exactly the verification that created or discharged an item
+  // ("Se A5") instead of only the opaque evidence document ids.
+  const verificationBySourceId = new Map(transactions.map((transaction) => [transaction.source_id, transaction.verification_id]));
   const changes = [];
   for (const [index, row] of rows.entries()) {
     const path = `open_item_changes[${index}]`;
@@ -395,10 +399,22 @@ function applyOpenItemChanges(opening, rows, documentIds, issues) {
       issues.push(issue("OPEN_ITEM_ID_REQUIRED", `${path}.item_id is required`, `${path}.item_id`));
       continue;
     }
+    if (row.date !== undefined && !validIsoDate(row.date)) {
+      issues.push(issue("OPEN_ITEM_DATE_INVALID", `${path}.date must be YYYY-MM-DD`, `${path}.date`));
+      continue;
+    }
     const evidence = Array.isArray(row.evidence_document_ids) ? row.evidence_document_ids : [];
     if (row.origin !== "approved_payroll") {
       for (const documentId of evidence) {
         if (!documentIds.has(documentId)) issues.push(issue("EVIDENCE_NOT_IN_DOCSET", `${path} cites ${documentId}, which is not in the fixed Docset`, path));
+      }
+    }
+    let verificationId;
+    if (row.transaction_source_id !== undefined) {
+      verificationId = verificationBySourceId.get(row.transaction_source_id);
+      if (verificationId === undefined) {
+        issues.push(issue("OPEN_ITEM_TRANSACTION_NOT_FOUND", `${path}.transaction_source_id does not name a transaction in this period`, `${path}.transaction_source_id`));
+        continue;
       }
     }
     if (row.action === "open") {
@@ -411,25 +427,34 @@ function applyOpenItemChanges(opening, rows, documentIds, issues) {
         issues.push(issue("OPEN_ITEM_INVALID", `${path} has invalid open-item fields`, path));
         continue;
       }
-      if (row.date !== undefined && !validIsoDate(row.date)) {
-        issues.push(issue("OPEN_ITEM_DATE_INVALID", `${path}.date must be YYYY-MM-DD`, `${path}.date`));
-        continue;
-      }
       const item = {
         item_id: row.item_id,
         kind: row.kind,
         party: row.party,
         original_amount_ore: row.amount_ore,
         remaining_ore: row.amount_ore,
-        // The day the obligation arose, kept on the item so every later period can still
-        // report how long it has been outstanding.
+        // The day the obligation arose and the verification that recorded it, kept on the
+        // item so every later period can still report how long it has stood and where it
+        // came from.
         ...(row.date ? { opened_date: row.date } : {}),
+        ...(verificationId ? { opened_verification_id: verificationId } : {}),
         ...(row.due_date ? { due_date: row.due_date } : {}),
         evidence_document_ids: [...evidence],
         origin: row.origin ?? "bookkeeping_input",
       };
       items.set(row.item_id, item);
-      changes.push({ ...row, evidence_document_ids: [...evidence] });
+      changes.push({
+        action: "open",
+        item_id: row.item_id,
+        kind: row.kind,
+        party: row.party,
+        amount_ore: row.amount_ore,
+        ...(row.date ? { date: row.date } : {}),
+        ...(verificationId ? { verification_id: verificationId } : {}),
+        ...(row.due_date ? { due_date: row.due_date } : {}),
+        evidence_document_ids: [...evidence],
+        origin: row.origin ?? "bookkeeping_input",
+      });
     } else {
       const current = items.get(row.item_id);
       if (!current) {
@@ -443,11 +468,15 @@ function applyOpenItemChanges(opening, rows, documentIds, issues) {
       }
       current.remaining_ore -= amount;
       if (current.remaining_ore === 0n) items.delete(row.item_id);
-      if (row.date !== undefined && !validIsoDate(row.date)) {
-        issues.push(issue("OPEN_ITEM_DATE_INVALID", `${path}.date must be YYYY-MM-DD`, `${path}.date`));
-        continue;
-      }
-      changes.push({ action: "settle", item_id: row.item_id, ...(row.date ? { date: row.date } : {}), amount_ore: amount, evidence_document_ids: [...evidence], origin: row.origin ?? "bookkeeping_input" });
+      changes.push({
+        action: "settle",
+        item_id: row.item_id,
+        ...(row.date ? { date: row.date } : {}),
+        ...(verificationId ? { verification_id: verificationId } : {}),
+        amount_ore: amount,
+        evidence_document_ids: [...evidence],
+        origin: row.origin ?? "bookkeeping_input",
+      });
     }
   }
   const closing = [...items.values()].sort((left, right) => left.item_id.localeCompare(right.item_id));

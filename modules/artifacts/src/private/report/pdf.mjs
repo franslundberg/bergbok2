@@ -120,7 +120,7 @@ function drawSection(doc, section, model) {
       [l.account, l.status, l.ledger, l.external, l.evidenceIds],
       section.items.map((item) => [
         item.account,
-        item.status,
+        item.statusDisplay,
         formatMoneyDisplay(item.ledger_closing_balance, model.language),
         formatMoneyDisplay(item.external_closing_balance, model.language),
         (item.evidence_document_ids ?? []).join(", "),
@@ -163,8 +163,12 @@ function drawOpenItems(doc, section, l, language) {
   if (!changes.items.length && !closing.items.length) {
     return paragraph(doc, l.noOpenItemsAtPeriodEnd);
   }
-  subheading(doc, changes.title);
+  paragraph(doc, closing.title, { muted: true });
+  if (closing.items.length) {
+    for (const item of closing.items) bullet(doc, openItemSentence(item, l, language));
+  } else empty(doc, section.emptyText);
   if (changes.items.length) {
+    subheading(doc, l.openItemHistory);
     drawTable(
       doc,
       [l.date, l.action, l.itemId, l.kind, l.party, l.total, l.dueDate, l.evidenceIds],
@@ -173,18 +177,18 @@ function drawOpenItems(doc, section, l, language) {
       ["left", "left", "left", "left", "left", "right", "left", "left"],
       6.8,
     );
-  } else empty(doc, section.emptyText);
-  subheading(doc, closing.title);
-  if (closing.items.length) {
-    drawTable(
-      doc,
-      [l.itemId, l.kind, l.party, l.remaining, l.openedDate, l.dueDate, l.evidenceIds],
-      closing.items.map((item) => [item.itemId, item.kind, item.party, formatMoneyDisplay(item.remaining, language), item.openedDate ?? "", item.dueDate ?? "", item.evidenceDocumentIds.join(", ")]),
-      [100, 72, 80, 70, 60, 60, 61],
-      ["left", "left", "left", "right", "left", "left", "left"],
-      6.8,
-    );
-  } else empty(doc, section.emptyText);
+  }
+}
+
+// PDF is a fully expanded, printed report with no anchors to link to, so the "Se A1"
+// reference is always plain text.
+function openItemSentence(item, labels, language) {
+  const noun = item.isPayable ? labels.openItemPayable : labels.openItemReceivable;
+  const preposition = item.isPayable ? labels.openItemPayableParty : labels.openItemReceivableParty;
+  const parts = [`${noun} ${labels.openItemAmountPrefix} ${formatMoneyDisplay(item.remaining, language)} ${preposition} ${item.party}.`];
+  if (item.dueDate) parts.push(`${labels.dueDate}: ${item.dueDate}.`);
+  if (item.openedVerificationId) parts.push(`${labels.openItemSeePrefix} ${item.openedVerificationId}.`);
+  return parts.join(" ");
 }
 
 function drawTransaction(doc, transaction, l, language) {
@@ -203,7 +207,7 @@ function verificationSummary(model, count) {
   const last = verification.closingLastNumber;
   const range = first === last ? `${verification.series}${first}` : `${verification.series}${first}–${verification.series}${last}`;
   const countLabel = count === 1 ? l.verificationSingular : l.verificationPlural;
-  return `${l.verification} ${verification.series} · ${range} · ${count} ${countLabel}`;
+  return `${count} ${countLabel} · ${range}`;
 }
 
 function heading(doc, value) {

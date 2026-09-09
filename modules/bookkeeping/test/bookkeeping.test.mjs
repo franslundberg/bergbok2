@@ -358,6 +358,7 @@ function openSupplierItem() {
     action: "open",
     item_id: "supplier:130989",
     date: "2026-05-12",
+    transaction_source_id: "invoice-130989",
     kind: "supplier_payable",
     party: "Leverantör AB",
     amount: "9295.00 SEK",
@@ -378,7 +379,22 @@ test("an open item that agrees with its mapped account raises no balance warning
   // period can still report how long it has been outstanding.
   assert.equal(items.changes[0].date, "2026-05-12");
   assert.equal(items.closing[0].opened_date, "2026-05-12");
+  // transaction_source_id names the transaction that books the debt; the kernel resolves
+  // it to that transaction's permanent verification id, so the report can say "Se A1".
+  assert.equal(items.changes[0].verification_id, "A8");
+  assert.equal(items.closing[0].opened_verification_id, "A8");
   assert.deepEqual(outcome.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH"), []);
+});
+
+test("an open item naming an unknown transaction is rejected rather than silently dropped", async () => {
+  const outcome = await consolidate(makeCase({
+    structuredInput: input({
+      transactions: [unpaidPurchase()],
+      open_item_changes: [{ ...openSupplierItem(), transaction_source_id: "does-not-exist" }],
+    }),
+  }));
+  assert.equal(outcome.kind, "needs_input");
+  assert.ok(outcome.questions.some((question) => question.code === "OPEN_ITEM_TRANSACTION_NOT_FOUND"));
 });
 
 test("an open item that disagrees with its mapped account warns without blocking the period", async () => {
@@ -455,6 +471,7 @@ test("an open item carries forward and is settled by item_id in a later period",
   const carried = opened.projected_state.payload.open_items.items;
   assert.equal(carried[0].item_id, "supplier:130989");
   assert.equal(carried[0].opened_date, "2026-05-12", "the opened date must survive into the next period");
+  assert.equal(carried[0].opened_verification_id, "A8", "the opening verification must survive into the next period");
   const settled = await consolidate(makeCase({
     period: { id: "2026-06", kind: "ordinary", start: "2026-06-01", end: "2026-06-30" },
     previousBookkeeping: {
@@ -479,12 +496,14 @@ test("an open item carries forward and is settled by item_id in a later period",
           { account: "1930", account_name: "Företagskonto", debit: "0.00 SEK", credit: "9295.00 SEK" },
         ],
       }],
-      open_item_changes: [{ action: "settle", item_id: "supplier:130989", date: "2026-06-05", amount: "9295.00 SEK", evidence_document_ids: [] }],
+      open_item_changes: [{ action: "settle", item_id: "supplier:130989", date: "2026-06-05", transaction_source_id: "payment-130989", amount: "9295.00 SEK", evidence_document_ids: [] }],
     }),
   }));
   assert.equal(settled.kind, "proposal", JSON.stringify(settled.questions ?? settled.reasons));
   assert.deepEqual(settled.canonical_outputs.bookkeeping.open_items.closing, []);
   assert.equal(settled.canonical_outputs.bookkeeping.open_items.changes[0].date, "2026-06-05");
+  // Resolved from this period's own transaction, independent of the item's opened_verification_id.
+  assert.equal(settled.canonical_outputs.bookkeeping.open_items.changes[0].verification_id, "A8");
   assert.deepEqual(settled.warnings.filter((w) => w.code === "OPEN_ITEM_BALANCE_MISMATCH"), []);
 });
 
