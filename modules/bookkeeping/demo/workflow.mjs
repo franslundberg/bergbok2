@@ -144,11 +144,13 @@ export async function run(options = {}) {
     approved: false,
   };
   const outputSnapshot = await record.read({ kind: "output_snapshot", runRef: storedRun.ref });
-  const reportBundles = await Promise.all([
+  const reportProfiles = [
     "report-source-json-v1",
     "report-html-v1",
     "report-pdf-v1",
-  ].map((profile) => renderArtifacts(outputSnapshot, profile)));
+    ...(vatIsDue(outputSnapshot) ? ["vat-xml-v1", "vat-verification-pdf-v1"] : []),
+  ];
+  const reportBundles = await Promise.all(reportProfiles.map((profile) => renderArtifacts(outputSnapshot, profile)));
   const reportArtifacts = reportBundles.flatMap((bundle) => bundle.payload.artifacts);
   await Promise.all([
     writeFile(path.join(runDirectory, "case.json"), prettyCanonicalJson(caseBundle), "utf8"),
@@ -195,11 +197,13 @@ export async function approve(options = {}) {
   descriptor.resulting_state_ref = result.state.ref;
   const approvalDirectory = path.join(workspaceRoot, "approvals");
   await mkdir(approvalDirectory, { recursive: true });
-  const reportBundles = await Promise.all([
+  const approvedReportProfiles = [
     "report-source-json-v1",
     "report-html-v1",
     "report-pdf-v1",
-  ].map((profile) => renderArtifacts(result.output_snapshot, profile)));
+    ...(vatIsDue(result.output_snapshot) ? ["vat-xml-v1", "vat-verification-pdf-v1"] : []),
+  ];
+  const reportBundles = await Promise.all(approvedReportProfiles.map((profile) => renderArtifacts(result.output_snapshot, profile)));
   const reportArtifacts = reportBundles.flatMap((bundle) => bundle.payload.artifacts);
   await Promise.all([
     writeFile(path.join(approvalDirectory, `${descriptor.run_id}.json`), prettyCanonicalJson(result), "utf8"),
@@ -344,23 +348,39 @@ export async function writeWorkspaceIndex(root, workspace) {
       runId,
       descriptor,
       failure,
-      preview: await presentFiles(root, (name) => path.join("runs", runId, name)),
-      approval: await presentFiles(root, (name) => path.join("approvals", `${runId}-${name}`)),
+      preview: await presentFiles(root, path.join("runs", runId), ""),
+      approval: await presentFiles(root, "approvals", `${runId}-`),
     });
   }
   await writeFile(path.join(root, "index.html"), renderWorkspaceIndex(workspace, rows), "utf8");
 }
 
-async function presentFiles(root, resolve) {
+async function presentFiles(root, directory, prefix) {
   const found = {};
-  for (const [key, name] of [["html", "report.html"], ["pdf", "report.pdf"], ["source", "report-source.json"]]) {
-    const relative = resolve(name);
+  for (const [key, name] of [["html", "report.html"], ["pdf", "report.pdf"], ["source", "report-source.json"], ["vatPdf", "vat-verification.pdf"]]) {
+    const relative = path.join(directory, `${prefix}${name}`);
     try {
       await stat(path.join(root, relative));
       found[key] = relative;
     } catch { /* the run never produced this artifact */ }
   }
+  const vatXml = await findVatXml(root, directory, prefix);
+  if (vatXml) found.vatXml = vatXml;
   return found;
+}
+
+// The eSKD filename carries the VAT cycle's month (moms-YYYY-MM.eskd), so unlike the
+// other artifacts it can't be probed by a fixed name; list the directory once instead.
+async function findVatXml(root, directory, prefix) {
+  const entries = await readdir(path.join(root, directory)).catch(() => []);
+  const match = entries.find((name) => name.startsWith(`${prefix}moms-`) && name.endsWith(".eskd"));
+  return match ? path.join(directory, match) : undefined;
+}
+
+// renderVatXml/renderVatPdf throw outside a due quarter; needs_input and out_of_scope
+// outcomes carry no bookkeeping canonical output at all, so this is false for those too.
+function vatIsDue(outputSnapshot) {
+  return outputSnapshot.payload.outcome.canonical_outputs?.bookkeeping?.vat_period?.due_in_period === true;
 }
 
 async function readJsonOrNull(file) {
@@ -369,7 +389,7 @@ async function readJsonOrNull(file) {
 
 function renderWorkspaceIndex(workspace, rows) {
   const body = rows.length
-    ? `<table><thead><tr><th>Period</th><th>Körning</th><th>Utfall</th><th>Status</th><th>Rapport</th><th>Godkänd rapport</th></tr></thead><tbody>${rows.map(indexRow).join("")}</tbody></table>`
+    ? `<table><thead><tr><th>Period</th><th>Körning</th><th>Utfall</th><th>Status</th><th>Rapport</th><th>Godkänd rapport</th><th>Moms</th></tr></thead><tbody>${rows.map(indexRow).join("")}</tbody></table>`
     : `<p class="empty">Inga körningar ännu.</p>`;
   return `<!doctype html>
 <html lang="sv">
@@ -420,7 +440,8 @@ function indexRow(row) {
     + `<td>${escapeHtml(kind)}</td>`
     + `<td><span class="pill ${state.tone}">${state.text}</span></td>`
     + `<td>${fileLinks(row.preview)}</td>`
-    + `<td>${fileLinks(row.approval)}</td></tr>`;
+    + `<td>${fileLinks(row.approval)}</td>`
+    + `<td>${vatLinks(row.preview, row.approval)}</td></tr>`;
 }
 
 function fileLinks(files) {
@@ -430,6 +451,24 @@ function fileLinks(files) {
     files.source ? `<a href="${escapeHtml(files.source)}">JSON</a>` : null,
   ].filter(Boolean);
   return links.length ? links.join(" · ") : `<span class="empty">–</span>`;
+}
+
+// The approved copy is the one that can actually be uploaded to Skatteverket, so it takes
+// priority in this single column; a not-yet-approved period only ever shows its preview,
+// clearly marked so it is never mistaken for the final filing.
+function vatLinks(preview, approval) {
+  const approved = vatFileLinks(approval);
+  if (approved) return approved;
+  const previewLinks = vatFileLinks(preview);
+  return previewLinks ? `${previewLinks} <span class="pill open">förslag</span>` : `<span class="empty">–</span>`;
+}
+
+function vatFileLinks(files) {
+  const links = [
+    files.vatXml ? `<a href="${escapeHtml(files.vatXml)}">XML</a>` : null,
+    files.vatPdf ? `<a href="${escapeHtml(files.vatPdf)}">PDF</a>` : null,
+  ].filter(Boolean);
+  return links.length ? links.join(" · ") : null;
 }
 
 function escapeHtml(value) {
