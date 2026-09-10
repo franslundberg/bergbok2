@@ -29,7 +29,7 @@ test("the demo help documents Import and fixture Period runs", async () => {
   assert.match(messages.join("\n"), /Uppstart, 2026-05,[\s\S]*2026-08/);
 });
 
-test("the Fiktiv fixture catalog publishes July and August", async () => {
+test("the Fiktiv fixture catalog publishes every period through September", async () => {
   const catalog = JSON.parse(await readFile(new URL("../demo/fixtures/fiktiv-ab/periods.json", import.meta.url), "utf8"));
   assert.deepEqual(catalog.periods.map(({ id, kind, start, end, documents }) => ({
     id,
@@ -43,6 +43,7 @@ test("the Fiktiv fixture catalog publishes July and August", async () => {
     { id: "2026-06", kind: "ordinary", start: "2026-06-01", end: "2026-06-30", documents: "2026-06" },
     { id: "2026-07", kind: "ordinary", start: "2026-07-01", end: "2026-07-31", documents: "2026-07" },
     { id: "2026-08", kind: "ordinary", start: "2026-08-01", end: "2026-08-31", documents: "2026-08" },
+    { id: "2026-09", kind: "ordinary", start: "2026-09-01", end: "2026-09-30", documents: "2026-09" },
   ]);
 });
 
