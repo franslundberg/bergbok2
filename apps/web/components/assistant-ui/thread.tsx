@@ -30,6 +30,7 @@ import "@assistant-ui/react-markdown/styles/dot.css";
 import { UserMessageAttachments } from "@/components/assistant-ui/attachment";
 import { AuthPanel, type AuthAction } from "@/components/auth-panel";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { ResultReportTool } from "@/components/assistant-ui/result-report-tool";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import type { PublicAuthState } from "@/lib/bergbok/auth-types";
@@ -381,6 +382,7 @@ function AssistantMessage({
             Text: MarkdownText,
             Source: SourceCitation,
             tools: {
+              by_name: { get_result_report: ResultReportTool },
               Fallback: (props) => (
                 <InvisibleToolResult {...props} onToolNavigation={onToolNavigation} />
               ),

@@ -19,6 +19,11 @@ import {
 import { localizeBookkeepingItems } from "./private/localization.mjs";
 import { classifiedReview, proposalReview } from "./private/review.mjs";
 import { consolidateWithAi } from "./private/ai/index.mjs";
+export {
+  assertResultReport,
+  BAS_2026_RESULT_GROUPS,
+  buildResultReport,
+} from "./reports/result-report.mjs";
 
 const DOMAIN = "bookkeeping";
 const MODULE_VERSION = "4.0.0";

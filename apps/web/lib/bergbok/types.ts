@@ -60,6 +60,12 @@ export type UploadRecord = {
   target_period_id?: string | null;
 };
 
+export type PendingUploadState = "assigning" | "needs_review";
+
+export type PendingUploadRecord = UploadRecord & {
+  assignmentState: PendingUploadState;
+};
+
 export type DocsetEntry = {
   documentId: string;
   uploadId: string;
@@ -93,7 +99,7 @@ export type PeriodDetail = {
   period: PeriodSummary;
   editable: boolean;
   documents: PeriodDocumentSummary[];
-  pendingUploads: UploadRecord[];
+  pendingUploads: PendingUploadRecord[];
   artifacts: Array<Record<string, unknown> & { id: string; filename: string }>;
   latestJob: null | {
     id: string;

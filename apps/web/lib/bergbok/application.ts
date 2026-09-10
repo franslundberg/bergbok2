@@ -1,9 +1,10 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { CompanyRecord, Artifacts } from "@bergbok/modular-system";
+import { CompanyRecord, Artifacts, Bookkeeping } from "@bergbok/modular-system";
 import type { AuthenticatedSession } from "./auth-types.ts";
 import { appConfig } from "./config.ts";
+import { renderableAssistantParts } from "./chat-history.ts";
 import { getDatabase, type BergbokDatabase } from "./database.ts";
 import {
   validateBookkeepingJob,
@@ -17,11 +18,13 @@ import {
   type PeriodDetail,
   type PeriodDocumentSummary,
   type UploadRecord,
+  type PendingUploadRecord,
 } from "./types.ts";
 
 export const COMPANY_ID = "fiktiv-ab";
 export const CONVERSATION_ID = "fiktiv-ab-main";
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+export const UPLOAD_ASSIGNMENT_PENDING_WINDOW_MS = 30_000;
 export const ALLOWED_MEDIA_TYPES = new Set([
   "application/pdf",
   "image/png",
@@ -32,6 +35,12 @@ export const ALLOWED_MEDIA_TYPES = new Set([
 
 export type PeriodValue = { id: string; kind: "start" | "ordinary"; start?: string; end: string };
 export type PeriodStatus = "locked" | "working" | "running" | "preliminary" | "approved";
+export type ResultReportRequest = {
+  fromMonth?: string;
+  toMonth?: string;
+  layout?: "monthly" | "period_accumulated";
+  selectedPeriodId?: string | null;
+};
 
 export const actorFor = (session: AuthenticatedSession) => ({
   id: session.userId,
@@ -101,13 +110,19 @@ export function conversationEvents(after = 0, database = getDatabase()) {
       payload_json: string;
       created_at: number;
     }>
-  ).map((row) => ({
-    id: row.id,
-    type: row.type,
-    actorId: row.actor_id,
-    payload: JSON.parse(row.payload_json),
-    createdAt: row.created_at,
-  }));
+  ).map((row) => {
+    const payload = JSON.parse(row.payload_json);
+    if (row.type === "chat_assistant" && payload.parts !== undefined) {
+      payload.parts = renderableAssistantParts(payload.parts) ?? [];
+    }
+    return {
+      id: row.id,
+      type: row.type,
+      actorId: row.actor_id,
+      payload,
+      createdAt: row.created_at,
+    };
+  });
   events.forEach(validateConversationEvent);
   return events;
 }
@@ -119,8 +134,9 @@ export function appendChatMessage(
   actorId: string | null,
   database = getDatabase(),
   workContext: WorkContext | null = null,
+  parts: readonly unknown[] | null = null,
 ) {
-  if (!text.trim()) return null;
+  if (!text.trim() && !parts?.length) return null;
   const previous = database
     .prepare(
       "SELECT payload_json FROM conversation_events WHERE conversation_id=? AND type=? ORDER BY id DESC LIMIT 1",
@@ -130,9 +146,127 @@ export function appendChatMessage(
   return appendEvent(
     `chat_${role}`,
     actorId,
-    { messageId, text: text.trim(), ...(workContext ? { workContext } : {}) },
+    {
+      messageId,
+      text: text.trim(),
+      ...(parts?.length ? { parts } : {}),
+      ...(workContext ? { workContext } : {}),
+    },
     database,
   );
+}
+
+export async function getResultReport(request: ResultReportRequest = {}, database = getDatabase()) {
+  const record = await companyRecord();
+  const state = await record.read({ kind: "state" });
+  const rows = database
+    .prepare(
+      "SELECT id,sequence,kind,start_date,end_date FROM company_periods WHERE company_id=? ORDER BY sequence",
+    )
+    .all(COMPANY_ID) as Array<{
+    id: string;
+    sequence: number;
+    kind: "start" | "ordinary";
+    start_date: string | null;
+    end_date: string;
+  }>;
+  const ordinary = rows.filter(({ kind }) => kind === "ordinary");
+  const approved = new Map<string, { period: PeriodValue; runRef: Record<string, unknown> }>();
+  for (const row of ordinary) {
+    const definition = rowPeriod(row);
+    try {
+      const periodRecord = await record.read({ kind: "period", period: definition });
+      const runRef = periodRecord.approved_runs?.bookkeeping;
+      if (!runRef) continue;
+      approved.set(row.id, { period: definition, runRef });
+    } catch (error) {
+      if ((error as { code?: string }).code !== "BERGBOK_NOT_FOUND") throw error;
+    }
+  }
+
+  const core = state.payload?.core;
+  const fiscalStart = core?.policies?.fiscal_year?.start?.slice(0, 7);
+  const bookkeepingStart = core?.bookkeeping_start_date?.slice(0, 7);
+  if (!fiscalStart || !bookkeepingStart) {
+    throw httpError(409, "Godkänd bolags- och räkenskapsårsinformation saknas.");
+  }
+  const reportStart = fiscalStart > bookkeepingStart ? fiscalStart : bookkeepingStart;
+  const selected = ordinary.some(({ id }) => id === request.selectedPeriodId)
+    ? request.selectedPeriodId
+    : null;
+  const latestApproved = [...approved.keys()].sort().at(-1) ?? null;
+  const defaultEnd = selected ?? latestApproved;
+  if (!defaultEnd && (!request.fromMonth || !request.toMonth)) {
+    throw httpError(409, "Det finns ännu ingen godkänd bokföringsperiod att rapportera.");
+  }
+  const fromMonth = request.fromMonth ?? reportStart;
+  const toMonth =
+    request.toMonth ?? (request.fromMonth ? (defaultEnd ?? request.fromMonth) : defaultEnd);
+  if (!toMonth) throw httpError(409, "Rapportens slutmånad kunde inte bestämmas.");
+  const layout = request.layout ?? (fromMonth === toMonth ? "period_accumulated" : "monthly");
+  const requiredMonths = monthIds(reportStart, toMonth);
+  const periods = [];
+  for (const month of requiredMonths) {
+    const source = approved.get(month);
+    const row = ordinary.find(({ id }) => id === month);
+    if (source) {
+      periods.push({
+        month,
+        period: source.period,
+        run_ref: source.runRef,
+        snapshot: await record.read({ kind: "output_snapshot", runRef: source.runRef }),
+      });
+    } else {
+      periods.push({
+        month,
+        period: row ? rowPeriod(row) : null,
+        run_ref: null,
+        snapshot: null,
+      });
+    }
+  }
+  return Bookkeeping.buildResultReport({
+    state,
+    periods,
+    fromMonth,
+    toMonth,
+    layout,
+  });
+}
+
+function rowPeriod(row: {
+  id: string;
+  kind: "start" | "ordinary";
+  start_date: string | null;
+  end_date: string;
+}): PeriodValue {
+  return {
+    id: row.id,
+    kind: row.kind,
+    ...(row.start_date ? { start: row.start_date } : {}),
+    end: row.end_date,
+  };
+}
+
+function monthIds(fromMonth: string, toMonth: string) {
+  if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(fromMonth) || !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(toMonth)) {
+    throw httpError(400, "Rapportperioden måste anges som YYYY-MM.");
+  }
+  if (fromMonth > toMonth) return [];
+  const result = [];
+  let year = Number(fromMonth.slice(0, 4));
+  let month = Number(fromMonth.slice(5, 7));
+  const endYear = Number(toMonth.slice(0, 4));
+  const endMonth = Number(toMonth.slice(5, 7));
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    result.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month === 13) {
+      year += 1;
+      month = 1;
+    }
+  }
+  return result;
 }
 
 export async function companySummary(database = getDatabase()) {
@@ -340,15 +474,29 @@ export async function periodDetail(
   const period = summary.periods.find((candidate) => candidate.id === periodId);
   if (!period) throw httpError(404, `Perioden ${periodId} finns inte.`);
   const documents = await periodDocuments(periodId, database);
-  const pendingUploads = database
+  const pendingUploadRows = database
     .prepare(
-      "SELECT id,filename,media_type,sha256,byte_length,status,period_id,document_id,duplicate_of,origin,target_period_id FROM uploads WHERE company_id=? AND status='unassigned' AND (target_period_id=? OR (target_period_id IS NULL AND ?=1)) ORDER BY created_at,id",
+      "SELECT id,filename,media_type,sha256,byte_length,status,period_id,document_id,duplicate_of,origin,target_period_id,created_at,updated_at FROM uploads WHERE company_id=? AND status='unassigned' AND (target_period_id=? OR (target_period_id IS NULL AND ?=1)) ORDER BY created_at,id",
     )
-    .all(
-      COMPANY_ID,
-      periodId,
-      summary.activePeriodId === periodId ? 1 : 0,
-    ) as PeriodDetail["pendingUploads"];
+    .all(COMPANY_ID, periodId, summary.activePeriodId === periodId ? 1 : 0) as Array<
+    Omit<PendingUploadRecord, "assignmentState"> & {
+      created_at: number;
+      updated_at: number;
+    }
+  >;
+  const now = Date.now();
+  const pendingUploads: PeriodDetail["pendingUploads"] = pendingUploadRows.map(
+    ({ created_at, updated_at, ...upload }) => ({
+      ...upload,
+      assignmentState:
+        upload.duplicate_of || upload.duplicateOf
+          ? "needs_review"
+          : upload.target_period_id &&
+              now - Math.max(created_at, updated_at) <= UPLOAD_ASSIGNMENT_PENDING_WINDOW_MS
+            ? "assigning"
+            : "needs_review",
+    }),
+  );
   const artifacts = database
     .prepare(
       "SELECT a.id,a.run_id,a.profile,a.filename,a.media_type,a.sha256,a.byte_length,a.created_at FROM artifacts a JOIN bookkeeping_runs r ON r.id=a.run_id WHERE a.company_id=? AND r.period_id=? ORDER BY a.created_at,a.id",
@@ -640,13 +788,13 @@ export async function receiveUpload(
     throw httpError(413, "Filen måste vara mellan 1 byte och 25 MiB.");
   const filename = safeFilename(file.name);
   const bytes = Buffer.from(await file.arrayBuffer());
-  validateUploadContent(file.type, bytes);
+  const mediaType = normalizeUploadMediaType(file.type, bytes);
   if (targetPeriodId) await assertEditablePeriod(targetPeriodId, database);
   const { id, logItem } = await ingestSource(
     session,
     {
       filename,
-      mediaType: file.type,
+      mediaType,
       bytes,
       origin: "upload",
       targetPeriodId: targetPeriodId ?? null,
@@ -668,7 +816,7 @@ export async function receiveUpload(
   const value = {
     id,
     filename,
-    mediaType: file.type,
+    mediaType,
     sha256: logItem.payload.sha256,
     byteLength: bytes.length,
     status: "unassigned",
@@ -678,8 +826,17 @@ export async function receiveUpload(
   validateUploadRecord(value);
   appendEvent("document_uploaded", session.userId, value, database);
   if (!duplicate && targetPeriodId) {
-    const assigned = await assignUpload(session, id, "assign", database, targetPeriodId);
-    return { ...value, ...assigned, duplicateOf: null };
+    try {
+      const assigned = await assignUpload(session, id, "assign", database, targetPeriodId);
+      return { ...value, ...assigned, duplicateOf: null };
+    } catch (error) {
+      database
+        .prepare(
+          "UPDATE uploads SET target_period_id=NULL,updated_at=? WHERE id=? AND status='unassigned'",
+        )
+        .run(Date.now(), id);
+      throw error;
+    }
   }
   return value;
 }
@@ -1023,4 +1180,21 @@ export function validateUploadContent(mediaType: string, bytes: Buffer) {
       throw httpError(415, "Textfilen måste vara giltig UTF-8.");
     }
   }
+}
+
+/**
+ * Browsers derive File.type from the filename, but imported evidence is
+ * sometimes mislabeled (for example a JPEG saved with a .png suffix). Use the
+ * verified bytes as the stored media type for the two supported image formats.
+ */
+export function normalizeUploadMediaType(mediaType: string, bytes: Buffer) {
+  if (mediaType === "image/png" || mediaType === "image/jpeg") {
+    const isPng = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
+      (value, index) => bytes[index] === value,
+    );
+    if (isPng) return "image/png";
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  }
+  validateUploadContent(mediaType, bytes);
+  return mediaType;
 }

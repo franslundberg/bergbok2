@@ -12,7 +12,9 @@ import {
   buildChatApplicationContext,
   createApplicationTools,
   isDirectBookkeepingCommand,
+  isDirectResultReportCommand,
 } from "@/lib/bergbok/chat-tools";
+import { messagesForNewClaims, sanitizeAssistantParts } from "@/lib/bergbok/chat-history";
 import { assertSameOrigin, jsonBody } from "@/lib/bergbok/http";
 import { parseWorkContext } from "@/lib/bergbok/types";
 import { periodDetail, companySummary } from "@/lib/bergbok/application";
@@ -93,10 +95,11 @@ export async function POST(request: Request) {
     : undefined;
   const config = modelConfig();
   const forceBookkeepingTool = Boolean(session && isDirectBookkeepingCommand(userText));
+  const forceResultReportTool = Boolean(session && isDirectResultReportCommand(userText));
   const result = streamText({
     ...buildModelRequest({
       model: openai.responses(config.model),
-      messages: await convertToModelMessages(messages),
+      messages: await convertToModelMessages(messagesForNewClaims(messages)),
       authenticated: Boolean(session),
       tools,
       applicationContext,
@@ -106,26 +109,39 @@ export async function POST(request: Request) {
       ? {
           prepareStep: ({ stepNumber }) => ({
             activeTools: activeToolsForStep(stepNumber),
-            ...(stepNumber === 0 && forceBookkeepingTool
+            ...(stepNumber === 0 && (forceResultReportTool || forceBookkeepingTool)
               ? {
                   toolChoice: {
                     type: "tool" as const,
-                    toolName: "start_bookkeeping" as const,
+                    toolName: forceResultReportTool
+                      ? ("get_result_report" as const)
+                      : ("start_bookkeeping" as const),
                   },
                 }
               : {}),
           }),
         }
       : {}),
-    onFinish: ({ text }) => {
-      if (session && text)
-        appendChatMessage("assistant", randomUUID(), text, "bergbok-chat", undefined, workContext);
-    },
   });
 
   return result.toUIMessageStreamResponse({
+    originalMessages: messages,
+    generateMessageId: randomUUID,
     sendReasoning: true,
     sendSources: true,
+    onFinish: ({ responseMessage }) => {
+      if (!session) return;
+      const saved = sanitizeAssistantParts(responseMessage.parts);
+      appendChatMessage(
+        "assistant",
+        responseMessage.id,
+        saved.text,
+        "bergbok-chat",
+        undefined,
+        workContext,
+        saved.parts,
+      );
+    },
     onError: (error) => {
       console.error("[bergbok-chat]", error instanceof Error ? error.message : error);
       const message = "Assistentens svar misslyckades. Försök igen.";

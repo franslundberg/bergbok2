@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon, FileIcon, FileTextIcon, UploadIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isInlineArtifactMediaType } from "@/lib/bergbok/artifact-delivery";
 import {
   Dialog,
   DialogClose,
@@ -344,38 +345,55 @@ function PeriodView({
         </button>
       )}
 
-      {detail.pendingUploads.map((upload) => (
-        <div key={upload.id} className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
-          <p className="font-medium">
-            {upload.duplicate_of || upload.duplicateOf ? "Möjlig dubblett" : "Ej tilldelad fil"}
-          </p>
-          <p className="truncate">{upload.filename}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {upload.duplicate_of || upload.duplicateOf
-              ? "Samma innehåll har redan laddats upp. Välj om kopian ska användas."
-              : "Filen kunde inte läggas till automatiskt. Välj om den ska användas."}
-          </p>
-          <div className="mt-3 flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              disabled={busy}
-              onClick={() => void onDuplicate(upload.id, "assign")}
-            >
-              Behåll
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => void onDuplicate(upload.id, "ignore")}
-            >
-              Använd inte
-            </Button>
+      {detail.pendingUploads.map((upload) => {
+        const duplicate = Boolean(upload.duplicate_of || upload.duplicateOf);
+        const assigning = !duplicate && upload.assignmentState === "assigning";
+        return (
+          <div
+            key={upload.id}
+            className={
+              assigning
+                ? "rounded-md border border-sky-300 bg-sky-50 p-3 text-sm"
+                : "rounded-md border border-amber-300 bg-amber-50 p-3 text-sm"
+            }
+            role={assigning ? "status" : undefined}
+            aria-live={assigning ? "polite" : undefined}
+          >
+            <p className="font-medium">
+              {duplicate ? "Möjlig dubblett" : assigning ? "Tilldelar filen" : "Ej tilldelad fil"}
+            </p>
+            <p className="truncate">{upload.filename}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {duplicate
+                ? "Samma innehåll har redan laddats upp. Välj om kopian ska användas."
+                : assigning
+                  ? `Filen läggs till i ${detail.period.id}.`
+                  : "Filen kunde inte läggas till automatiskt. Välj om den ska användas."}
+            </p>
+            {!assigning && (
+              <div className="mt-3 flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void onDuplicate(upload.id, "assign")}
+                >
+                  Behåll
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => void onDuplicate(upload.id, "ignore")}
+                >
+                  Använd inte
+                </Button>
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <div className="divide-y rounded-md border">
         {topLevel.length === 0 && (
@@ -804,15 +822,22 @@ function ArtifactsView({ detail }: { detail: PeriodDetail }) {
       {detail.artifacts.length === 0 ? (
         <p className="text-sm text-muted-foreground">Inga filer finns ännu.</p>
       ) : (
-        detail.artifacts.map((artifact) => (
-          <a
-            key={artifact.id}
-            href={`/api/artifacts/${artifact.id}`}
-            className="flex items-center gap-2 rounded-md border p-3 text-sm hover:bg-muted/50"
-          >
-            <FileTextIcon className="size-4" /> {artifact.filename}
-          </a>
-        ))
+        detail.artifacts.map((artifact) => {
+          const inline = isInlineArtifactMediaType(
+            typeof artifact.media_type === "string" ? artifact.media_type : "",
+          );
+          return (
+            <a
+              key={artifact.id}
+              href={`/api/artifacts/${artifact.id}`}
+              target={inline ? "_blank" : undefined}
+              rel={inline ? "noreferrer" : undefined}
+              className="flex items-center gap-2 rounded-md border p-3 text-sm hover:bg-muted/50"
+            >
+              <FileTextIcon className="size-4" /> {artifact.filename}
+            </a>
+          );
+        })
       )}
     </div>
   );

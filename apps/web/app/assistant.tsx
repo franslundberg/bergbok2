@@ -54,7 +54,7 @@ const actionEndpoint = (action: AuthAction) => {
 type Event = {
   id: number;
   type: string;
-  payload: Record<string, unknown> & { messageId?: string; text?: string };
+  payload: Record<string, unknown> & { messageId?: string; text?: string; parts?: unknown };
   createdAt: number;
 };
 type Summary = CompanySummary;
@@ -96,7 +96,10 @@ export const Assistant = () => {
           .map((event) => ({
             id: event.payload.messageId ?? `event-${event.id}`,
             role: event.type === "chat_user" ? ("user" as const) : ("assistant" as const),
-            parts: [{ type: "text" as const, text: event.payload.text ?? "" }],
+            parts:
+              event.type === "chat_assistant" && Array.isArray(event.payload.parts)
+                ? (event.payload.parts as UIMessage["parts"])
+                : [{ type: "text" as const, text: event.payload.text ?? "" }],
           })),
       );
       setHistoryReady(true);

@@ -7,6 +7,7 @@ import {
   createTextDocument,
   documentDetail,
   enqueueRun,
+  getResultReport,
   periodDetail,
   removePeriodDocument,
   replaceTextDocument,
@@ -71,13 +72,20 @@ export const MUTATION_TOOL_NAMES = [
   "request_changes",
 ] as const;
 
+export const READ_TOOL_NAMES = ["get_result_report"] as const;
+
 export const activeToolsForStep = (stepNumber: number) =>
   stepNumber === 0
-    ? (["shell", ...NAVIGATION_TOOL_NAMES, ...MUTATION_TOOL_NAMES] as const)
-    : (["shell", ...NAVIGATION_TOOL_NAMES] as const);
+    ? (["shell", ...NAVIGATION_TOOL_NAMES, ...READ_TOOL_NAMES, ...MUTATION_TOOL_NAMES] as const)
+    : (["shell", ...NAVIGATION_TOOL_NAMES, ...READ_TOOL_NAMES] as const);
 
 export const isDirectBookkeepingCommand = (text: string) =>
   /^(?:(?:kan|skulle) du\s+bokföra|(?:vänligen\s+)?bokför)(?:\s+bokföringen\s+för|\s+perioden)?\s+(?:(?:upp)?start|\d{4}-(?:0[1-9]|1[0-2]))[.!?]*$/iu.test(
+    text.trim(),
+  );
+
+export const isDirectResultReportCommand = (text: string) =>
+  /^(?:(?:kan|skulle) du\s+)?(?:visa|skapa|ta fram|gör)\b[^\n]{0,180}\bresultatrapport\b/iu.test(
     text.trim(),
   );
 
@@ -154,6 +162,44 @@ export function createApplicationTools(
   const period = (value: unknown) => resolveToolPeriod(value, workContext);
   const context = (periodId: string) => documentsContext(COMPANY_ID, periodId);
   return {
+    get_result_report: tool({
+      description:
+        "Skapa en deterministiskt beräknad svensk resultatrapport enbart från Company Records godkända bokföringssnapshotar. Använd alltid detta verktyg för finansiella resultatrapporter; beräkna dem aldrig med shell.",
+      inputSchema: objectSchema({
+        fromMonth: {
+          type: "string",
+          pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$",
+          description: "Första rapportmånaden som YYYY-MM. Utelämna för bokföringsstarten.",
+        },
+        toMonth: {
+          type: "string",
+          pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$",
+          description:
+            "Sista rapportmånaden som YYYY-MM. Utelämna för vald eller senast godkänd månad.",
+        },
+        layout: {
+          type: "string",
+          enum: ["monthly", "period_accumulated"],
+          description:
+            "monthly ger en kolumn per månad; period_accumulated ger period och ackumulerat.",
+        },
+      }),
+      execute: async (input) => {
+        const report = await getResultReport({
+          ...(typeof input.fromMonth === "string" ? { fromMonth: input.fromMonth } : {}),
+          ...(typeof input.toMonth === "string" ? { toMonth: input.toMonth } : {}),
+          ...(input.layout === "monthly" || input.layout === "period_accumulated"
+            ? { layout: input.layout }
+            : {}),
+          selectedPeriodId: workContext?.periodId,
+        });
+        return {
+          ok: true as const,
+          message: "Resultatrapporten är beräknad från godkänd bokföring.",
+          report,
+        };
+      },
+    }),
     show_period: tool({
       description: "Visa en periods underlag i arbetsytan till höger.",
       inputSchema: objectSchema({ periodId: stringProperty("Period-ID, till exempel 2026-05") }),

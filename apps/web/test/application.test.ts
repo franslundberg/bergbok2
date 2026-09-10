@@ -5,8 +5,13 @@ import path from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { Bookkeeping, createModuleOutcome } from "@bergbok/modular-system";
+import { convertToModelMessages } from "ai";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../lib/bergbok/auth-constraints.ts";
 import { AuthService, validatePassword } from "../lib/bergbok/auth.ts";
+import {
+  artifactBaseMediaType,
+  isInlineArtifactMediaType,
+} from "../lib/bergbok/artifact-delivery.ts";
 import { createDatabase } from "../lib/bergbok/database.ts";
 import {
   assignUpload,
@@ -18,6 +23,7 @@ import {
   decideRun,
   documentDetail,
   enqueueRun,
+  getResultReport,
   periodDetail,
   periodValue,
   receiveUpload,
@@ -26,6 +32,8 @@ import {
   reviewContent,
   requestProposalChanges,
   safeFilename,
+  UPLOAD_ASSIGNMENT_PENDING_WINDOW_MS,
+  normalizeUploadMediaType,
   validateUploadContent,
 } from "../lib/bergbok/application.ts";
 import {
@@ -33,10 +41,14 @@ import {
   approvedBookkeepingThrough,
   createApplicationTools,
   isDirectBookkeepingCommand,
+  isDirectResultReportCommand,
   MUTATION_TOOL_NAMES,
+  READ_TOOL_NAMES,
 } from "../lib/bergbok/chat-tools.ts";
+import { messagesForNewClaims, sanitizeAssistantParts } from "../lib/bergbok/chat-history.ts";
 import { materializeChatSnapshot } from "../lib/bergbok/snapshot.ts";
 import { formatElapsed } from "../lib/bergbok/job-progress.ts";
+import { formatResultReportMoney } from "../lib/bergbok/result-report-view.ts";
 import { claimWorkContextNavigation } from "../lib/bergbok/workbench-navigation.ts";
 import {
   defaultWorkContext,
@@ -94,6 +106,20 @@ test("bookkeeping progress uses calm elapsed-time buckets", () => {
   assert.equal(formatElapsed(119), "1 minut");
   assert.equal(formatElapsed(120), "2 minuter");
   assert.equal(formatElapsed(3600), "60 minuter");
+});
+
+test("HTML and PDF artifacts open inline while source files download", () => {
+  assert.equal(artifactBaseMediaType("text/html; charset=utf-8"), "text/html");
+  assert.equal(isInlineArtifactMediaType("text/html; charset=utf-8"), true);
+  assert.equal(isInlineArtifactMediaType("application/pdf"), true);
+  assert.equal(isInlineArtifactMediaType("application/json; charset=utf-8"), false);
+  assert.equal(isInlineArtifactMediaType("application/x-sie; charset=utf-8"), false);
+});
+
+test("result report cells distinguish covered zero from uncovered values", () => {
+  assert.equal(formatResultReportMoney("0.00 SEK", "SEK"), "0,00");
+  assert.equal(formatResultReportMoney("-1234567.89 SEK", "SEK"), "−1 234 567,89");
+  assert.equal(formatResultReportMoney(null, "SEK"), "—");
 });
 
 test("WorkContext validates activities, objects and domain compatibility", () => {
@@ -275,7 +301,7 @@ test("WorkContext restore falls back from invalid sessions to the active period"
   );
 });
 
-test("database bootstraps Fiktiv AB with three empty periods", () => {
+test("database bootstraps Fiktiv AB with the fixture periods", () => {
   const database = createDatabase(":memory:");
   assert.deepEqual(periodValue("Uppstart", database), {
     id: "Uppstart",
@@ -288,6 +314,26 @@ test("database bootstraps Fiktiv AB with three empty periods", () => {
     start: "2026-05-12",
     end: "2026-05-31",
   });
+  assert.deepEqual(periodValue("2026-07", database), {
+    id: "2026-07",
+    kind: "ordinary",
+    start: "2026-07-01",
+    end: "2026-07-31",
+  });
+  assert.deepEqual(periodValue("2026-08", database), {
+    id: "2026-08",
+    kind: "ordinary",
+    start: "2026-08-01",
+    end: "2026-08-31",
+  });
+  assert.deepEqual(
+    (
+      database.prepare("SELECT id FROM company_periods ORDER BY sequence").all() as Array<{
+        id: string;
+      }>
+    ).map(({ id }) => id),
+    ["Uppstart", "2026-05", "2026-06", "2026-07", "2026-08"],
+  );
   assert.equal(
     (database.prepare("SELECT COUNT(*) count FROM uploads").get() as { count: number }).count,
     0,
@@ -428,6 +474,66 @@ test("an upload explicitly targeted at the selected period is assigned there", a
     const summary = await companySummary(database);
     assert.equal(summary.periods.find(({ id }) => id === "2026-05")?.uploadCount, 1);
     assert.equal(summary.periods.find(({ id }) => id === "Uppstart")?.uploadCount, 0);
+    assert.equal((await periodDetail("2026-05", database)).pendingUploads.length, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("pending uploads distinguish assignment progress from review", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bergbok-web-pending-upload-test-"));
+  process.env.BERGBOK_DATA_ROOT = root;
+  process.env.BERGBOK_OWNER_EMAIL = session.email;
+  try {
+    const database = createDatabase(":memory:");
+    const now = Date.now();
+    const insert = database.prepare(
+      "INSERT INTO uploads (id,company_id,log_item_id,filename,media_type,sha256,byte_length,status,period_id,document_id,duplicate_of,created_by,created_at,updated_at,origin,parent_document_id,replaces_document_id,target_period_id) VALUES (?,?,?,?,?,?,?,'unassigned',NULL,NULL,?,?,?,?, 'upload',NULL,NULL,?)",
+    );
+    const add = (
+      id: string,
+      filename: string,
+      createdAt: number,
+      targetPeriodId: string | null,
+      duplicateOf: string | null = null,
+    ) =>
+      insert.run(
+        id,
+        "fiktiv-ab",
+        `log-${id}`,
+        filename,
+        "application/pdf",
+        id.padEnd(64, "a").slice(0, 64),
+        100,
+        duplicateOf,
+        "owner",
+        createdAt,
+        createdAt,
+        targetPeriodId,
+      );
+    add("recent", "pågår.pdf", now, "2026-08");
+    add("stale", "gammal.pdf", now - UPLOAD_ASSIGNMENT_PENDING_WINDOW_MS - 1, "2026-08");
+    add("manual", "manuell.pdf", now, null);
+    add("duplicate", "kopia.pdf", now, "2026-08", "existing-upload");
+
+    const august = await periodDetail("2026-08", database);
+    assert.equal(
+      august.pendingUploads.find(({ id }) => id === "recent")?.assignmentState,
+      "assigning",
+    );
+    assert.equal(
+      august.pendingUploads.find(({ id }) => id === "stale")?.assignmentState,
+      "needs_review",
+    );
+    assert.equal(
+      august.pendingUploads.find(({ id }) => id === "duplicate")?.assignmentState,
+      "needs_review",
+    );
+    const activePeriod = await periodDetail("Uppstart", database);
+    assert.equal(
+      activePeriod.pendingUploads.find(({ id }) => id === "manual")?.assignmentState,
+      "needs_review",
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -673,6 +779,7 @@ test("chat exposes mutations only on the first step and never exposes approval",
     activity: "documents",
   });
   assert.ok(MUTATION_TOOL_NAMES.every((name) => name in tools));
+  assert.ok(READ_TOOL_NAMES.every((name) => name in tools));
   assert.ok(!("approve" in tools));
   assert.ok(!("approve_proposal" in tools));
   assert.ok((activeToolsForStep(0) as readonly string[]).includes("remove_document"));
@@ -685,6 +792,7 @@ test("chat exposes mutations only on the first step and never exposes approval",
     "show_proposal",
     "show_artifacts",
     "prepare_upload",
+    "get_result_report",
   ]);
 });
 
@@ -695,6 +803,17 @@ test("clear bookkeeping chat commands select the trusted run tool", () => {
   assert.equal(isDirectBookkeepingCommand("Kan du bokföra perioden Start?"), true);
   assert.equal(isDirectBookkeepingCommand("Bokför den här perioden"), false);
   assert.equal(isDirectBookkeepingCommand("Hur bokför jag 2026-05?"), false);
+});
+
+test("only clear resultatrapport imperatives force the trusted report tool", () => {
+  assert.equal(
+    isDirectResultReportCommand("Skapa en resultatrapport för maj–september 2026, månadsvis"),
+    true,
+  );
+  assert.equal(isDirectResultReportCommand("Visa augusti 2026 som resultatrapport"), true);
+  assert.equal(isDirectResultReportCommand("Kan du ta fram en resultatrapport?"), true);
+  assert.equal(isDirectResultReportCommand("Vad är en resultatrapport?"), false);
+  assert.equal(isDirectResultReportCommand("Hur läser jag en resultatrapport?"), false);
 });
 
 test("chat context identifies the latest approved bookkeeping cutoff", () => {
@@ -896,7 +1015,10 @@ test("Uppstart, May and June can be proposed, approved and rendered in order", a
         assert.match(reportHtml, /Ingen ingående eller utgående moms bokfördes i perioden/);
         // The VAT cadence is a company fact, so it appears once under Företagsuppgifter;
         // the Moms section stays a plain sentence for a period without VAT activity.
-        assert.match(reportHtml, /<h2>Företagsuppgifter<\/h2>[\s\S]*<dt>Redovisningsintervall<\/dt><dd>Kvartalsvis<\/dd>/);
+        assert.match(
+          reportHtml,
+          /<h2>Företagsuppgifter<\/h2>[\s\S]*<dt>Redovisningsintervall<\/dt><dd>Kvartalsvis<\/dd>/,
+        );
         assert.doesNotMatch(reportHtml.slice(reportHtml.indexOf("<h2>Moms</h2>")), /Kvartalsvis/);
         const pdf = await reviewContent(processed.runId, "pdf", database);
         assert.match(pdf.bytes.subarray(0, 8).toString("latin1"), /^%PDF-/);
@@ -930,10 +1052,117 @@ test("Uppstart, May and June can be proposed, approved and rendered in order", a
     const summary = await companySummary(database);
     assert.deepEqual(
       summary.periods.map((period) => period.status),
-      ["approved", "approved", "approved"],
+      ["approved", "approved", "approved", "working", "locked"],
     );
-    assert.equal(summary.activePeriodId, null);
+    assert.equal(summary.activePeriodId, "2026-07");
     assert.equal(summary.artifacts.length, 12);
+
+    const report = await getResultReport(
+      { fromMonth: "2026-05", toMonth: "2026-07", layout: "monthly" },
+      database,
+    );
+    assert.equal(report.payload.coverage.status, "partially_covered");
+    assert.deepEqual(report.payload.coverage.uncovered_months, ["2026-07"]);
+    assert.equal(
+      report.payload.rows.find(({ id }: { id: string }) => id === "calculated_result").values[
+        "2026-05"
+      ],
+      "100.00 SEK",
+    );
+    assert.equal(report.payload.source.approved_run_refs.length, 2);
+    assert.equal(report.payload.source.state_ref.sha256, summary.state.sha256);
+
+    const defaultReport = await getResultReport({ selectedPeriodId: "2026-06" }, database);
+    assert.deepEqual(defaultReport.payload.requested_range, {
+      from_month: "2026-05",
+      to_month: "2026-06",
+    });
+    assert.equal(defaultReport.payload.layout, "monthly");
+
+    const rawParts = [
+      { type: "reasoning", text: "hidden" },
+      { type: "text", text: "Här är rapporten." },
+      {
+        type: "tool-shell",
+        toolCallId: "shell-1",
+        state: "output-available",
+        output: "secret",
+      },
+      {
+        type: "tool-get_result_report",
+        toolCallId: "report-1",
+        state: "output-available",
+        input: { fromMonth: "2026-05", toMonth: "2026-07", layout: "monthly" },
+        output: { ok: true, report },
+      },
+    ];
+    const saved = sanitizeAssistantParts(rawParts);
+    assert.equal(saved.parts.length, 2);
+    assert.equal(saved.text, "Här är rapporten.");
+    appendChatMessage(
+      "assistant",
+      "report-message",
+      saved.text,
+      "bergbok-chat",
+      database,
+      null,
+      saved.parts,
+    );
+    const stored = conversationEvents(0, database).at(-1);
+    assert.ok(stored);
+    assert.equal(stored.payload.parts[1].output.report.ref.sha256, report.ref.sha256);
+
+    const safeForModel = messagesForNewClaims([
+      {
+        id: "report-message",
+        role: "assistant",
+        metadata: { responseId: "resp-provider-owned" },
+        parts: [
+          {
+            type: "reasoning",
+            text: "hidden",
+            providerMetadata: {
+              openai: {
+                itemId: "rs-provider-owned",
+              },
+            },
+          },
+          {
+            type: "text",
+            text: "Här är rapporten.",
+            providerMetadata: {
+              openai: {
+                itemId: "msg-provider-owned",
+              },
+            },
+          },
+          saved.parts[1],
+        ] as never,
+      },
+    ]);
+    assert.deepEqual(safeForModel, [
+      {
+        id: "report-message",
+        role: "assistant",
+        parts: [{ type: "text", text: "Här är rapporten." }],
+      },
+    ]);
+    assert.doesNotMatch(JSON.stringify(safeForModel), /provider-owned/);
+    assert.deepEqual(await convertToModelMessages(safeForModel), [
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "Här är rapporten." }],
+      },
+    ]);
+
+    const tampered = structuredClone(stored.payload);
+    tampered.parts[1].output.report.payload.rows[0].label = "Manipulerad";
+    database
+      .prepare("UPDATE conversation_events SET payload_json=? WHERE id=?")
+      .run(JSON.stringify(tampered), stored.id);
+    const unavailable = conversationEvents(0, database).at(-1)?.payload.parts[1].output;
+    assert.equal(unavailable.unavailable, true);
+    assert.equal(unavailable.report, undefined);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -961,5 +1190,20 @@ test("filenames cannot escape application storage", () => {
   assert.throws(
     () => validateUploadContent("text/plain", Buffer.from([0x66, 0x00, 0x6f])),
     /binärdata/,
+  );
+  assert.equal(
+    normalizeUploadMediaType("image/png", Buffer.from([0xff, 0xd8, 0xff, 0xe0])),
+    "image/jpeg",
+  );
+  assert.equal(
+    normalizeUploadMediaType(
+      "image/jpeg",
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    ),
+    "image/png",
+  );
+  assert.throws(
+    () => normalizeUploadMediaType("image/png", Buffer.from("not an image")),
+    /giltig PNG/,
   );
 });

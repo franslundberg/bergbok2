@@ -30,7 +30,7 @@ test("live Fiktiv AB files reach approved State in period order", { skip: !enabl
   process.env.BERGBOK_OWNER_EMAIL = session.email;
   try {
     const database = createDatabase(":memory:");
-    for (const periodId of ["Uppstart", "2026-05", "2026-06"]) {
+    for (const periodId of ["Uppstart", "2026-05", "2026-06", "2026-07", "2026-08"]) {
       const directory = path.join(fixtureRoot, periodId);
       const filenames = (await readdir(directory)).sort();
       for (const filename of filenames) {
@@ -52,7 +52,7 @@ test("live Fiktiv AB files reach approved State in period order", { skip: !enabl
     const summary = await companySummary(database);
     assert.deepEqual(
       summary.periods.map((period) => period.status),
-      ["approved", "approved", "approved"],
+      ["approved", "approved", "approved", "approved", "approved"],
     );
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -118,6 +118,8 @@ const seedApplication = (database: BergbokDatabase) => {
   insert.run("Uppstart", 1, "start", null, "2026-05-11");
   insert.run("2026-05", 2, "ordinary", "2026-05-12", "2026-05-31");
   insert.run("2026-06", 3, "ordinary", "2026-06-01", "2026-06-30");
+  insert.run("2026-07", 4, "ordinary", "2026-07-01", "2026-07-31");
+  insert.run("2026-08", 5, "ordinary", "2026-08-01", "2026-08-31");
   database
     .prepare(
       "INSERT OR IGNORE INTO conversations (id,company_id,created_at,updated_at) VALUES ('fiktiv-ab-main','fiktiv-ab',?,?)",
