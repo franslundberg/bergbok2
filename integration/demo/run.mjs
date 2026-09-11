@@ -325,8 +325,8 @@ function bookkeepingCorePolicy() {
     chart_of_accounts: "BAS",
     vat_reporting: {
       frequency: "quarterly",
-      input_accounts: ["2641"],
-      output_accounts: ["2611"],
+      chart: "BAS-2026",
+      box_overrides: [],
       settlement_account: "2650",
     },
   };

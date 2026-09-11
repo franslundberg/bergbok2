@@ -166,9 +166,9 @@ Write one JSON object with no Markdown fences:
         "chart_of_accounts": "BAS",
         "vat_reporting": {
           "frequency": "quarterly",
-          "input_accounts": ["2641"],
-          "output_accounts": ["2611"],
-          "settlement_account": "2650"
+          "chart": "BAS-2026",
+          "settlement_account": "2650",
+          "box_overrides": []
         }
       }
     },
@@ -224,7 +224,7 @@ Every monetary amount is canonical Money: a major-unit decimal, one ASCII space,
 
 For Start, all imported fields, transactions, payroll_postings, open_item_changes, and reconciliations must be empty or omitted. For Import, imported_balances, imported_open_items, and imported_verification_series are required and transactions, payroll_postings, and open_item_changes must be empty. Ordinary periods must not contain imported fields.
 
-For the first Start or Import, core.policies.bookkeeping is required. Extract the quarterly frequency from cited company evidence and use the controller-configured BAS VAT accounts exactly. Later periods use the trusted policy supplied in case.json.
+For the first Start or Import, core.policies.bookkeeping is required. Extract the quarterly frequency from cited company evidence and copy the vat_reporting policy from case.json exactly, field for field. Later periods use the trusted policy supplied in case.json.
 
 VAT is fully deterministic and must never appear in candidate.json: never include a "vat" field, and never author a VAT-closing transaction. At quarter end, the trusted validator computes the declaration boxes and constructs the closing transaction itself from already-booked ledger balances; it also supplies that transaction's narrative summary. Book only the period's own ordinary activity.
 

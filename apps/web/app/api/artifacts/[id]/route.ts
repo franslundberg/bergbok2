@@ -18,7 +18,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         ...(html
           ? {
               "Content-Security-Policy":
-                "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+                "default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data:",
             }
           : {}),
       },

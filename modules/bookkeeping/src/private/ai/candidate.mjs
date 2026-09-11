@@ -126,24 +126,16 @@ function initialPolicyError(candidate, fixed) {
   }
   const vat = candidate.vat_reporting;
   if (!vat || vat.frequency !== "quarterly"
-      || !Array.isArray(vat.input_accounts) || !vat.input_accounts.length
-      || !Array.isArray(vat.output_accounts) || !vat.output_accounts.length
+      || typeof vat.chart !== "string"
       || typeof vat.settlement_account !== "string") {
-    return "Initial core must propose an evidence-backed quarterly VAT policy with configured accounts";
+    return "Initial core must propose an evidence-backed quarterly VAT policy naming an account chart and a settlement account";
   }
   return fixed?.chart_of_accounts === candidate.chart_of_accounts
       && fixed?.vat_reporting?.frequency === vat.frequency
-      && sameStrings(fixed?.vat_reporting?.input_accounts, vat.input_accounts)
-      && sameStrings(fixed?.vat_reporting?.output_accounts, vat.output_accounts)
+      && fixed?.vat_reporting?.chart === vat.chart
       && fixed?.vat_reporting?.settlement_account === vat.settlement_account
     ? null
     : "Initial core VAT policy differs from the controller-owned onboarding policy";
-}
-
-function sameStrings(left, right) {
-  return Array.isArray(left) && Array.isArray(right)
-    && left.length === right.length
-    && left.every((value, index) => value === right[index]);
 }
 
 export function candidateOutcome({ candidate, caseBundle, provenance }) {

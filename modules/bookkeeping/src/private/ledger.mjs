@@ -213,6 +213,16 @@ export function totalsForTransactions(transactions) {
   return { debit_ore: debitOre, credit_ore: creditOre };
 }
 
+// Declaration boxes are whole SEK on Skatteverket's form while ledger balances
+// are öre-precise, so the declared figure is rounded even though the settlement
+// booked against the ledger keeps the exact remainder.
+export function roundToWholeKrona(ore) {
+  const negative = ore < 0n;
+  const magnitude = negative ? -ore : ore;
+  const whole = (magnitude + 50n) / 100n;
+  return negative ? -whole : whole;
+}
+
 export function netBalanceForAccount(balances, account) {
   const row = balances.find((item) => item.account === account);
   return row ? row.debit_ore - row.credit_ore : 0n;

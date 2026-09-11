@@ -1,4 +1,5 @@
 import { issue, isPlainObject, validIsoDate } from "./ledger.mjs";
+import { chartNames } from "./vat/boxes.mjs";
 import {
   BOOKKEEPING_SCHEMA_VERSION,
   LEGACY_BOOKKEEPING_SCHEMA_VERSION,
@@ -61,7 +62,7 @@ export function scopeReasons(input, caseBundle) {
   if (vatPolicy?.frequency !== "quarterly") {
     reasons.push({ code: "UNSUPPORTED_VAT_FREQUENCY", message: "The prototype supports quarterly VAT reporting" });
   } else if (!validVatAccountPolicy(vatPolicy)) {
-    reasons.push({ code: "INVALID_VAT_ACCOUNT_POLICY", message: "VAT reporting requires configured input, output, and settlement accounts" });
+    reasons.push({ code: "INVALID_VAT_ACCOUNT_POLICY", message: `VAT reporting requires a known account chart (${chartNames().join(", ")}) and a settlement account` });
   }
   if (bookkeeping?.open_items !== undefined && !validOpenItemAccountPolicy(bookkeeping.open_items)) {
     reasons.push({ code: "INVALID_OPEN_ITEM_ACCOUNT_POLICY", message: "Open-item accounts must map each kind to four-digit BAS accounts and a debit or credit side, without reusing an account" });
@@ -79,16 +80,16 @@ export function scopeReasons(input, caseBundle) {
   return reasons;
 }
 
+// The account-to-box mapping is a published BAS standard rather than per-company
+// configuration, so the policy names a chart and carries only the deviations a
+// company actually has. A new imported customer therefore needs no VAT setup.
 function validVatAccountPolicy(value) {
-  if (!isPlainObject(value)
-      || !Array.isArray(value.input_accounts) || !value.input_accounts.length
-      || !Array.isArray(value.output_accounts) || !value.output_accounts.length
-      || !/^\d{4}$/.test(value.settlement_account ?? "")) return false;
-  const inputs = value.input_accounts;
-  const outputs = value.output_accounts;
-  const all = [...inputs, ...outputs, value.settlement_account];
-  return all.every((account) => typeof account === "string" && /^\d{4}$/.test(account))
-    && new Set(all).size === all.length;
+  if (!isPlainObject(value)) return false;
+  if (!chartNames().includes(value.chart)) return false;
+  if (!/^\d{4}$/.test(value.settlement_account ?? "")) return false;
+  if (value.box_overrides === undefined) return true;
+  return Array.isArray(value.box_overrides)
+    && value.box_overrides.every((entry) => isPlainObject(entry) && /^\d{2}$/.test(entry.box ?? ""));
 }
 
 // The mapping is optional controller policy: when it is absent the balance check is

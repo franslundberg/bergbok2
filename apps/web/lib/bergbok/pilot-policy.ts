@@ -1,10 +1,13 @@
 export const PILOT_ORGANIZATION_TYPE = "Privat svenskt aktiebolag";
 export const PILOT_CHART_OF_ACCOUNTS = "BAS";
+// The account-to-box mapping is the published BAS standard, so the policy names
+// a chart rather than listing accounts. box_overrides carries the deviations a
+// company actually has, and no pilot company has any.
 export const PILOT_VAT_POLICY = Object.freeze({
   frequency: "quarterly",
-  input_accounts: Object.freeze(["2641"]),
-  output_accounts: Object.freeze(["2611"]),
+  chart: "BAS-2026",
   settlement_account: "2650",
+  box_overrides: Object.freeze([]),
 });
 // Which BAS accounts each open-item kind must sum to, and the side it stands on. This is
 // controller configuration: it is always injected here, never read from the approved core
@@ -20,9 +23,9 @@ export const PILOT_OPEN_ITEM_POLICY = Object.freeze({
 
 type VatReportingPolicy = {
   frequency: string;
-  input_accounts: readonly string[];
-  output_accounts: readonly string[];
+  chart: string;
   settlement_account: string;
+  box_overrides: readonly unknown[];
 };
 
 type CoreState = {
@@ -67,8 +70,8 @@ function assertPilotPolicy(chartOfAccounts: string, vat: VatReportingPolicy) {
   if (
     chartOfAccounts !== PILOT_CHART_OF_ACCOUNTS ||
     vat.frequency !== PILOT_VAT_POLICY.frequency ||
-    JSON.stringify(vat.input_accounts) !== JSON.stringify(PILOT_VAT_POLICY.input_accounts) ||
-    JSON.stringify(vat.output_accounts) !== JSON.stringify(PILOT_VAT_POLICY.output_accounts) ||
+    vat.chart !== PILOT_VAT_POLICY.chart ||
+    JSON.stringify(vat.box_overrides ?? []) !== JSON.stringify(PILOT_VAT_POLICY.box_overrides) ||
     vat.settlement_account !== PILOT_VAT_POLICY.settlement_account
   ) {
     throw new Error("Approved company VAT policy is outside the Fiktiv AB Pilot profile");

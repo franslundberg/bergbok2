@@ -1107,21 +1107,17 @@ function approvedCoreState(outcome, currentState, domain, periodKind) {
   }
   const bookkeepingPolicy = core.policies?.bookkeeping;
   const vatPolicy = bookkeepingPolicy?.vat_reporting;
+  // The account-to-box mapping is a published BAS standard, so the policy names
+  // a chart rather than listing accounts, and carries only the deviations a
+  // company has.
   if (bookkeepingPolicy?.chart_of_accounts !== "BAS"
       || vatPolicy?.frequency !== "quarterly"
-      || !validAccountList(vatPolicy.input_accounts)
-      || !validAccountList(vatPolicy.output_accounts)
+      || typeof vatPolicy.chart !== "string" || !vatPolicy.chart
       || !/^\d{4}$/.test(vatPolicy.settlement_account ?? "")
-      || new Set([...vatPolicy.input_accounts, ...vatPolicy.output_accounts, vatPolicy.settlement_account]).size
-        !== vatPolicy.input_accounts.length + vatPolicy.output_accounts.length + 1) {
-    fail("INVALID_PROPOSAL", "Initial core State requires a complete quarterly BAS VAT policy");
+      || (vatPolicy.box_overrides !== undefined && !Array.isArray(vatPolicy.box_overrides))) {
+    fail("INVALID_PROPOSAL", "Initial core State requires a quarterly BAS VAT policy naming an account chart");
   }
   return cloneJson(core);
-}
-
-function validAccountList(value) {
-  return Array.isArray(value) && value.length > 0
-    && value.every((account) => typeof account === "string" && /^\d{4}$/.test(account));
 }
 
 async function validateDocset(paths, docset, companyId, periodId) {

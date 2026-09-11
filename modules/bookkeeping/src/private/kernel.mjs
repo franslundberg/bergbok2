@@ -1,4 +1,11 @@
 import {
+  accountsForRole,
+  computeDeclarationBoxes,
+  mappedVatAccounts,
+  resolveVatMap,
+  vatAccountSides,
+} from "./vat/boxes.mjs";
+import {
   assignVerificationNumbers,
   combineBalances,
   isPlainObject,
@@ -153,21 +160,67 @@ export function evaluateBookkeeping({
     issues.push(issue("VAT_CLOSING_SOURCE_ID_RESERVED", "vat-closing is reserved for the deterministic VAT-closing transaction", "bookkeeping_input.transactions"));
   }
   const cycle = quarterlyCycle(bounds, input.mode, issues);
-  const { vatPeriod, closingTransaction } = deriveVatClosing({
-    cycle,
-    policy: policy.bookkeeping.vat_reporting,
-    openingBalances,
-    priorTransactions: allUnnumbered,
-    language: caseBundle.payload.language ?? "sv",
-    issues,
-  });
+  const vatPolicy = policy.bookkeeping.vat_reporting;
+  const vatMap = resolveVatMap(vatPolicy);
+  if (!vatMap) {
+    issues.push(issue("VAT_CHART_UNKNOWN", `Unknown VAT account chart: ${vatPolicy?.chart}`, "policies.bookkeeping.vat_reporting.chart"));
+  }
+  // A start or import period opens the first cycle, so its baseline is the
+  // opening position. Every later period carries the baseline the last close
+  // recorded, untouched until the next close replaces it.
+  let baselineBalances = openingBalances;
+  if (input.mode === "ordinary") {
+    const normalized = normalizeBalances(
+      previousDomain?.vat?.balances_at_cycle_start ?? [],
+      "previous_state.domains.bookkeeping.vat.balances_at_cycle_start",
+    );
+    baselineBalances = normalized.balances;
+    issues.push(...normalized.issues);
+    if (previousDomain && previousDomain.vat?.balances_at_cycle_start === undefined) {
+      warnings.push(issue(
+        "VAT_CYCLE_BASELINE_MISSING",
+        "The preceding state records no balances at the VAT cycle start, so declaration boxes drawn from accounts that are not cleared each cycle may overstate the period",
+        "previous_state.domains.bookkeeping.vat.balances_at_cycle_start",
+      ));
+    }
+  }
+  const { vatPeriod, closingTransaction } = vatMap
+    ? deriveVatClosing({
+      cycle,
+      policy: vatPolicy,
+      map: vatMap,
+      openingBalances,
+      priorTransactions: allUnnumbered,
+      baselineBalances,
+      language: caseBundle.payload.language ?? "sv",
+      issues,
+      warnings,
+    })
+    : {
+      vatPeriod: {
+        frequency: vatPolicy?.frequency ?? null,
+        chart: vatPolicy?.chart ?? null,
+        cycle_start: cycle.start,
+        cycle_end: cycle.end,
+        due_in_period: cycle.due,
+        input_accounts: [],
+        output_accounts: [],
+        settlement_account: vatPolicy?.settlement_account ?? null,
+        status: "not_due",
+        closing_transaction_source_id: null,
+        declaration_boxes_sek: {},
+        notes: [],
+        balances_at_cycle_start: [],
+      },
+      closingTransaction: null,
+    };
   if (closingTransaction) allUnnumbered.push({ ...closingTransaction, _source_order: allUnnumbered.length });
 
   const series = policy.bookkeeping.verification_series;
   const transactions = assignVerificationNumbers(allUnnumbered, { series, previousLastNumber });
   const movements = movementsFromTransactions(transactions);
   const closingBalances = combineBalances(openingBalances, movements);
-  assertVatAccountsConfigured(transactions, policy.bookkeeping.vat_reporting, issues);
+  if (vatMap) assertVatAccountsMapped(transactions, vatMap, issues);
   const totals = totalsForTransactions(transactions);
   if (totals.debit_ore !== totals.credit_ore) {
     issues.push(issue("PERIOD_IMBALANCE", "The complete period delta is not balanced", "transactions"));
@@ -535,81 +588,91 @@ function calculateReconciliations(rows, closingBalances, documentIds, issues, wa
   });
 }
 
-// VAT closing is fully deterministic: the accounts, the reporting cycle, and
-// the account balances they must reconcile against are all already known to
-// the kernel before any candidate exists. Unlike Payroll (where the AI still
-// chooses an account, a judgment call), there is no judgment component here,
-// so the kernel constructs the closing transaction and declaration boxes
-// itself rather than trusting and validating a candidate-supplied one.
-function deriveVatClosing({ cycle, policy, openingBalances, priorTransactions, language, issues }) {
+// VAT closing is deterministic: which account feeds which declaration box is a
+// published BAS mapping, not a judgment, so the kernel constructs the closing
+// transaction and the boxes itself rather than trusting a candidate-supplied
+// one. What the model does decide is which account a purchase belongs on, and
+// that decision is already made by the time we get here.
+//
+// A box is the movement of its accounts over the VAT cycle. Since a cycle spans
+// up to three bookkeeping periods and the kernel sees only this one, the
+// baseline comes from the state: the balances as they stood when the cycle
+// opened, carried forward untouched until the cycle closes.
+function deriveVatClosing({
+  cycle,
+  policy,
+  map,
+  openingBalances,
+  priorTransactions,
+  baselineBalances,
+  language,
+  issues,
+  warnings,
+}) {
   const base = {
     frequency: policy.frequency,
+    chart: policy.chart,
     cycle_start: cycle.start,
     cycle_end: cycle.end,
     due_in_period: cycle.due,
-    input_accounts: [...policy.input_accounts],
-    output_accounts: [...policy.output_accounts],
+    // Derived from the mapping rather than configured, so the report can keep
+    // naming the accounts without the policy having to list them.
+    input_accounts: accountsForRole(map, "input"),
+    output_accounts: accountsForRole(map, "output"),
     settlement_account: policy.settlement_account,
   };
+  const before = combineBalances(openingBalances, movementsFromTransactions(priorTransactions));
+
   if (!cycle.due) {
     return {
-      vatPeriod: { ...base, status: "not_due", closing_transaction_source_id: null, declaration_boxes_sek: {} },
+      vatPeriod: {
+        ...base,
+        status: "not_due",
+        closing_transaction_source_id: null,
+        declaration_boxes_sek: {},
+        notes: [],
+        balances_at_cycle_start: baselineBalances,
+      },
       closingTransaction: null,
     };
   }
-  const before = combineBalances(openingBalances, movementsFromTransactions(priorTransactions));
-  let outputVatOre = 0n;
-  for (const account of policy.output_accounts) {
-    const net = netBalanceForAccount(before, account);
-    if (net > 0n) issues.push(issue("VAT_OUTPUT_ACCOUNT_SIDE_INVALID", `Output VAT account ${account} has a debit balance before closing`, "ledger"));
-    outputVatOre += net < 0n ? -net : 0n;
+
+  const { boxes, notes, unmapped, inconsistencies } = computeDeclarationBoxes({
+    baselineBalances,
+    closingBalances: before,
+    map,
+  });
+  for (const row of unmapped) {
+    warnings.push(issue(
+      "VAT_ACCOUNT_NOT_IN_MAP",
+      `VAT account ${row.account} moved during the cycle but reaches no declaration box`,
+      "ledger",
+      { account: row.account },
+    ));
   }
-  let inputVatOre = 0n;
-  for (const account of policy.input_accounts) {
-    const net = netBalanceForAccount(before, account);
-    if (net < 0n) issues.push(issue("VAT_INPUT_ACCOUNT_SIDE_INVALID", `Input VAT account ${account} has a credit balance before closing`, "ledger"));
-    inputVatOre += net > 0n ? net : 0n;
+
+  for (const gap of inconsistencies) {
+    warnings.push(issue(
+      "VAT_BASE_BOX_MISSING",
+      `Ruta ${gap.output_box} carries output VAT for ${gap.label} but no beskattningsunderlag reached ruta ${gap.base_boxes.join(", ")}`,
+      "ledger",
+      { output_box: gap.output_box, base_boxes: gap.base_boxes },
+    ));
   }
-  // Boxes 10/11/12 split output VAT by rate (25%/12%/6%). The kernel can only
-  // derive that split when policy dedicates one account per rate; with a
-  // single configured output account, the whole total is reported as
-  // standard-rate (box 10). Fail closed rather than guess for multi-account
-  // policies until per-rate account configuration exists.
-  if (policy.output_accounts.length > 1) {
-    issues.push(issue("VAT_OUTPUT_SPLIT_UNSUPPORTED", "Automatic VAT-rate box splitting is not supported for more than one configured output-VAT account", "bookkeeping_input.vat"));
+
+  const lines = closingLines(before, map, policy, issues);
+  // The declared boxes are whole SEK on Skatteverket's form while the ledger is
+  // öre-precise, so the booked settlement keeps the exact remainder and the
+  // declared figure is rounded. A few öre of difference between them is normal
+  // VAT reporting, not an error to eliminate.
+  const closed = { ...base, status: "due", declaration_boxes_sek: boxes, notes };
+  if (lines.length === 0) {
     return {
-      vatPeriod: { ...base, status: "due", closing_transaction_source_id: null, declaration_boxes_sek: {} },
+      vatPeriod: { ...closed, closing_transaction_source_id: null, balances_at_cycle_start: before },
       closingTransaction: null,
     };
   }
-  // Declaration boxes must be whole SEK (Skatteverket's form), but exact
-  // ledger balances are öre-precise and essentially never land on a whole
-  // krona. Round the *declared* boxes; zero the ledger accounts and settle
-  // the exact remainder against the settlement account — a few öre of
-  // difference between the booked settlement and the declared box 49 is
-  // normal in real VAT reporting, not an error to eliminate.
-  const box10 = roundToWholeKrona(outputVatOre);
-  const box48 = roundToWholeKrona(inputVatOre);
-  const boxes = { "10": box10, "11": 0n, "12": 0n, "48": box48, "49": box10 - box48 };
-  if (outputVatOre === 0n && inputVatOre === 0n) {
-    return {
-      vatPeriod: { ...base, status: "due", closing_transaction_source_id: null, declaration_boxes_sek: boxes },
-      closingTransaction: null,
-    };
-  }
-  const lines = [];
-  for (const account of policy.output_accounts) {
-    if (outputVatOre !== 0n) lines.push({ account, account_name: "Utgående moms", debit_ore: outputVatOre, credit_ore: 0n });
-  }
-  for (const account of policy.input_accounts) {
-    if (inputVatOre !== 0n) lines.push({ account, account_name: "Ingående moms", debit_ore: 0n, credit_ore: inputVatOre });
-  }
-  const settlementNet = outputVatOre - inputVatOre;
-  if (settlementNet > 0n) {
-    lines.push({ account: policy.settlement_account, account_name: "Redovisningskonto för moms", debit_ore: 0n, credit_ore: settlementNet });
-  } else if (settlementNet < 0n) {
-    lines.push({ account: policy.settlement_account, account_name: "Redovisningskonto för moms", debit_ore: -settlementNet, credit_ore: 0n });
-  }
+
   const description = language === "sv"
     ? `Momsavstämning för perioden ${cycle.start}–${cycle.end}, bokförd mot konto ${policy.settlement_account}.`
     : `VAT reconciliation for the period ${cycle.start}–${cycle.end}, posted to account ${policy.settlement_account}.`;
@@ -620,20 +683,45 @@ function deriveVatClosing({ cycle, policy, openingBalances, priorTransactions, l
   issues.push(...built.issues);
   return {
     vatPeriod: {
-      ...base,
-      status: "due",
+      ...closed,
       closing_transaction_source_id: built.transactions.length ? "vat-closing" : null,
-      declaration_boxes_sek: boxes,
+      // The next cycle starts *after* this entry, which is the whole point of
+      // it: the VAT accounts it clears must stand at zero in the baseline, or
+      // the next quarter subtracts VAT that has already been settled.
+      balances_at_cycle_start: combineBalances(before, movementsFromTransactions(built.transactions)),
     },
     closingTransaction: built.transactions[0] ?? null,
   };
 }
 
-function roundToWholeKrona(ore) {
-  const negative = ore < 0n;
-  const magnitude = negative ? -ore : ore;
-  const whole = (magnitude + 50n) / 100n;
-  return negative ? -whole : whole;
+// Clear every VAT account the mapping claims and that carries a balance, and
+// put the net on the settlement account. Two accounts used to be enough; a
+// period with reverse charge or import touches half a dozen.
+function closingLines(before, map, policy, issues) {
+  const lines = [];
+  let settlementNet = 0n;
+  for (const [account, side] of vatAccountSides(map)) {
+    const net = netBalanceForAccount(before, account);
+    if (net === 0n) continue;
+    if (side === "credit" && net > 0n) {
+      issues.push(issue("VAT_OUTPUT_ACCOUNT_SIDE_INVALID", `Output VAT account ${account} has a debit balance before closing`, "ledger"));
+    }
+    if (side === "debit" && net < 0n) {
+      issues.push(issue("VAT_INPUT_ACCOUNT_SIDE_INVALID", `Input VAT account ${account} has a credit balance before closing`, "ledger"));
+    }
+    // Post the opposite of the balance, which takes the account to zero.
+    lines.push(net > 0n
+      ? { account, account_name: "Moms", debit_ore: 0n, credit_ore: net }
+      : { account, account_name: "Moms", debit_ore: -net, credit_ore: 0n });
+    settlementNet += net;
+  }
+  if (lines.length === 0) return lines;
+  if (settlementNet !== 0n) {
+    lines.push(settlementNet > 0n
+      ? { account: policy.settlement_account, account_name: "Redovisningskonto för moms", debit_ore: settlementNet, credit_ore: 0n }
+      : { account: policy.settlement_account, account_name: "Redovisningskonto för moms", debit_ore: 0n, credit_ore: -settlementNet });
+  }
+  return lines;
 }
 
 function quarterlyCycle(bounds, mode, issues) {
@@ -661,13 +749,24 @@ function quarterForDate(value) {
   return { start: `${year}-${starts[quarter]}`, end: `${year}-${ends[quarter]}` };
 }
 
-function assertVatAccountsConfigured(transactions, policy, issues) {
-  const configuredVat = new Set([...policy.input_accounts, ...policy.output_accounts]);
+// A VAT line must use an account the mapping knows, or its amount would never
+// reach a declaration box. The message names the accounts that are allowed,
+// because it is what the assessment's repair round reads when it has guessed
+// wrong: a rejection that only says no costs a round and teaches nothing.
+function assertVatAccountsMapped(transactions, map, issues) {
+  const allowed = mappedVatAccounts(map);
+  const reported = new Set();
   for (const row of transactions) {
     for (const line of row.lines) {
-      if (/^(261|262|263|264)\d$/.test(line.account) && !configuredVat.has(line.account)) {
-        issues.push(issue("VAT_ACCOUNT_NOT_CONFIGURED", `VAT account ${line.account} is not configured in company policy`, "bookkeeping_input.transactions"));
-      }
+      if (!/^(261|262|263|264)\d$/.test(line.account)) continue;
+      if (allowed.has(line.account) || reported.has(line.account)) continue;
+      reported.add(line.account);
+      issues.push(issue(
+        "VAT_ACCOUNT_NOT_MAPPED",
+        `VAT account ${line.account} reaches no declaration box. Allowed VAT accounts are ${[...allowed].sort().join(", ")}.`,
+        "bookkeeping_input.transactions",
+        { account: line.account, allowed: [...allowed].sort() },
+      ));
     }
   }
 }

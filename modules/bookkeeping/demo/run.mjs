@@ -44,27 +44,12 @@ const structuredInput = {
         { account: "1510", account_name: "Accounts receivable", debit: "0.00 SEK", credit: "125.00 SEK" },
       ],
     },
-    {
-      source_id: "vat-close:2026-Q1",
-      date: "2026-03-31",
-      description: "Close quarterly VAT",
-      evidence_document_ids: ["invoice-101.pdf"],
-      lines: [
-        { account: "2611", account_name: "Output VAT", debit: "25.00 SEK", credit: "0.00 SEK" },
-        { account: "2650", account_name: "VAT settlement", debit: "0.00 SEK", credit: "25.00 SEK" },
-      ],
-    },
   ],
   open_item_changes: [
     { action: "open", item_id: "customer:invoice-101", kind: "customer_receivable", party: "Customer AB", amount: "125.00 SEK", due_date: "2026-03-20", evidence_document_ids: ["invoice-101.pdf"] },
     { action: "settle", item_id: "customer:invoice-101", amount: "125.00 SEK", evidence_document_ids: ["bank-statement.pdf"] },
   ],
   reconciliations: [{ account: "1930", external_closing_balance: "625.00 SEK", evidence_document_ids: ["bank-statement.pdf"] }],
-  vat: {
-    status: "due",
-    closing_transaction_source_id: "vat-close:2026-Q1",
-    declaration_boxes: { "10": "25.00 SEK", "11": "0.00 SEK", "12": "0.00 SEK", "48": "0.00 SEK", "49": "25.00 SEK" },
-  },
 };
 
 const previousState = createStateEnvelope({
@@ -90,7 +75,7 @@ const previousState = createStateEnvelope({
       },
       open_items: { items: [], totals: { count: 0, by_kind: {} } },
       reconciliation: { period_id: "2026-02", accounts: [] },
-      vat: { frequency: "quarterly", cycle_start: "2026-01-01", cycle_end: "2026-03-31", due_in_period: false, input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650", status: "not_due", closing_transaction_source_id: null, declaration_boxes: {} },
+      vat: { frequency: "quarterly", cycle_start: "2026-01-01", cycle_end: "2026-03-31", due_in_period: false, chart: "BAS-2026", input_accounts: ["2640", "2641", "2642", "2645", "2646", "2647", "2649"], output_accounts: ["2610", "2611", "2612", "2613", "2614", "2615", "2616", "2620", "2621", "2622", "2623", "2624", "2625", "2626", "2630", "2631", "2632", "2633", "2634", "2635", "2636"], settlement_account: "2650", status: "not_due", closing_transaction_source_id: null, declaration_boxes: {}, balances_at_cycle_start: [] },
     },
   },
 });
@@ -128,7 +113,7 @@ const caseBundle = sealContent({
         profile: "se-private-ab-invoice-calendar-demo-v1",
         verification_series: "A",
         chart_of_accounts: "BAS",
-        vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" },
+        vat_reporting: { frequency: "quarterly", chart: "BAS-2026", settlement_account: "2650", box_overrides: [] },
         open_items: {
           supplier_payable: { accounts: ["2440"], side: "credit" },
           customer_receivable: { accounts: ["1510"], side: "debit" },

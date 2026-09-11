@@ -43,6 +43,46 @@ export function renderSie(outputs, { preview }) {
   return { filename: "bookkeeping.sie", mediaType: "application/x-sie; charset=utf-8", bytes: Buffer.from(`${lines.join("\r\n")}\r\n`, "utf8") };
 }
 
+// Skatteverket's eSKD element for each declaration box, in the order the file
+// must carry them. Taken from Skatteverket's description of lämna
+// momsdeklaration via filöverföring; the boxes themselves are the ones the BAS
+// mapping fills.
+const ESKD_ELEMENTS = Object.freeze([
+  ["05", "ForsMomsEjAnnan"],
+  ["06", "UttagMoms"],
+  ["07", "UlagMargbesk"],
+  ["08", "HyrinkomstFriv"],
+  ["10", "MomsUtgHog"],
+  ["11", "MomsUtgMedel"],
+  ["12", "MomsUtgLag"],
+  ["20", "InkopVaruAnnatEg"],
+  ["21", "InkopTjanstAnnatEg"],
+  ["22", "InkopTjanstUtomEg"],
+  ["23", "InkopVaruSverige"],
+  ["24", "InkopTjanstSverige"],
+  ["30", "MomsInkopUtgHog"],
+  ["31", "MomsInkopUtgMedel"],
+  ["32", "MomsInkopUtgLag"],
+  ["35", "ForsVaruAnnatEg"],
+  ["36", "ForsVaruUtomEg"],
+  ["37", "InkopVaruMellan3p"],
+  ["38", "ForsVaruMellan3p"],
+  ["39", "ForsTjSkskAnnatEg"],
+  ["40", "ForsTjOvrUtomEg"],
+  ["41", "ForsKopareSkskSverige"],
+  ["42", "ForsOvrigt"],
+  ["48", "MomsIngAvdr"],
+  ["50", "MomsUlagImport"],
+  ["60", "MomsImportUtgHog"],
+  ["61", "MomsImportUtgMedel"],
+  ["62", "MomsImportUtgLag"],
+]);
+
+// Ruta 49 always goes in the file, even at zero: it is the figure Skatteverket
+// settles against the skattekonto. Every other box is omitted when it is zero,
+// which is what the form expects and keeps the file readable.
+const ALWAYS_PRESENT_BOX = "49";
+
 export function renderVatXml(outputs, { preview }) {
   const bookkeeping = outputs.bookkeeping ?? outputs;
   const vat = bookkeeping.vat_period ?? bookkeeping.vat;
@@ -54,8 +94,13 @@ export function renderVatXml(outputs, { preview }) {
   if (vat.status !== "due" || vat.due_in_period !== true) throw new Error("VAT XML profile requires VAT due in the rendered period");
   const end = vat.cycle_end;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(end ?? "")) throw new Error("VAT XML profile requires cycle_end");
-  for (const box of ["10", "11", "12", "48", "49"]) wholeSek(boxes[box] ?? 0, `VAT box ${box}`);
   const wholeBoxes = Object.fromEntries(Object.entries(boxes).map(([box, value]) => [box, wholeSek(value, `VAT box ${box}`)]));
+  // A box the mapping produced but the file has no element for would vanish
+  // silently, which is the one failure mode a declaration must not have.
+  const known = new Set([...ESKD_ELEMENTS.map(([box]) => box), ALWAYS_PRESENT_BOX]);
+  for (const [box, value] of Object.entries(wholeBoxes)) {
+    if (!known.has(box) && value !== 0n) throw new Error(`VAT box ${box} has no eSKD element`);
+  }
   const body = [
     '<?xml version="1.0" encoding="ISO-8859-1"?>',
     ...(preview ? ["<!-- PREVIEW - NOT APPROVED -->"] : []),
@@ -63,11 +108,10 @@ export function renderVatXml(outputs, { preview }) {
     `  <OrgNr>${organization.organization_number}</OrgNr>`,
     "  <Moms>",
     `    <Period>${end.slice(0, 7).replace("-", "")}</Period>`,
-    ...(wholeBoxes["10"] ? [`    <MomsUtgHog>${wholeBoxes["10"]}</MomsUtgHog>`] : []),
-    ...(wholeBoxes["11"] ? [`    <MomsUtgMedel>${wholeBoxes["11"]}</MomsUtgMedel>`] : []),
-    ...(wholeBoxes["12"] ? [`    <MomsUtgLag>${wholeBoxes["12"]}</MomsUtgLag>`] : []),
-    ...(wholeBoxes["48"] ? [`    <MomsIngAvdr>${wholeBoxes["48"]}</MomsIngAvdr>`] : []),
-    `    <MomsBetala>${wholeBoxes["49"]}</MomsBetala>`,
+    ...ESKD_ELEMENTS
+      .filter(([box]) => wholeBoxes[box])
+      .map(([box, element]) => `    <${element}>${wholeBoxes[box]}</${element}>`),
+    `    <MomsBetala>${wholeBoxes[ALWAYS_PRESENT_BOX] ?? 0n}</MomsBetala>`,
     "  </Moms>",
     "</eSKDUpload>",
     "",

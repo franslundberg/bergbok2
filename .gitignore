@@ -9,3 +9,4 @@ coverage/
 var/
 apps/web/.next/
 apps/web/node_modules/
+modules/bookkeeping/reference/

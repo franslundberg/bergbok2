@@ -30,8 +30,8 @@ function policies(overrides = {}) {
       chart_of_accounts: "BAS",
       vat_reporting: {
         frequency: "quarterly",
-        input_accounts: ["2641"],
-        output_accounts: ["2611"],
+        chart: "BAS-2026",
+        box_overrides: [],
         settlement_account: "2650",
       },
       open_items: {
@@ -78,8 +78,9 @@ function bookkeepingState({ lastNumber = 7, balances = [], openItems = [] } = {}
       cycle_start: "2026-04-01",
       cycle_end: "2026-06-30",
       due_in_period: false,
-      input_accounts: ["2641"],
-      output_accounts: ["2611"],
+      chart: "BAS-2026",
+      input_accounts: [],
+      output_accounts: [],
       settlement_account: "2650",
       status: "not_due",
       closing_transaction_source_id: null,
@@ -272,8 +273,8 @@ test("an AI-derived Start candidate proposes core initialization and a Swedish r
           chart_of_accounts: "BAS",
           vat_reporting: {
             frequency: "quarterly",
-            input_accounts: ["2641"],
-            output_accounts: ["2611"],
+            chart: "BAS-2026",
+            box_overrides: [],
             settlement_account: "2650",
           },
         },
@@ -701,19 +702,19 @@ test("VAT candidate-input and period-shape invariants fail closed", async (t) =>
     assert.ok(outcome.questions.some((question) => question.code === "VAT_PERIOD_SPANS_MULTIPLE_DEADLINES"));
   });
 
-  await t.test("more than one configured output-VAT account cannot be auto-split into boxes", async () => {
+  await t.test("an unknown account chart is out of scope rather than a silent default", async () => {
     const { previous } = dueVatFixture();
     const outcome = await run({
       previous,
       effectivePolicies: policies({ bookkeeping: { vat_reporting: {
         frequency: "quarterly",
-        input_accounts: ["2641"],
-        output_accounts: ["2611", "2612"],
+        chart: "BAS-1998",
+        box_overrides: [],
         settlement_account: "2650",
       } } }),
     });
-    assert.equal(outcome.kind, "needs_input");
-    assert.ok(outcome.questions.some((question) => question.code === "VAT_OUTPUT_SPLIT_UNSUPPORTED"));
+    assert.equal(outcome.kind, "out_of_scope");
+    assert.ok(outcome.reasons.some((reason) => reason.code === "INVALID_VAT_ACCOUNT_POLICY"));
   });
 
   await t.test("outside quarter end, no closing transaction is constructed", async () => {
@@ -727,6 +728,141 @@ test("VAT candidate-input and period-shape invariants fail closed", async (t) =>
     assert.equal(outcome.canonical_outputs.bookkeeping.vat_period.status, "not_due");
     assert.equal(outcome.canonical_outputs.bookkeeping.vat_period.closing_transaction_source_id, null);
     assert.equal(outcome.canonical_outputs.bookkeeping.ledger.transactions.length, 0);
+  });
+
+  await t.test("a box counts the cycle's movement, not the account's running balance", async () => {
+    // 4531 is a cost account that runs all year. A quarter that adds 1 000,00
+    // on top of an earlier 4 000,00 must declare only the quarter's movement,
+    // which is the whole reason the baseline is carried in State.
+    const { previous } = dueVatFixture();
+    previous.ledger.balances.push(
+      { account: "4531", account_name: "Services from outside the EU", debit: "5000.00 SEK", credit: "0.00 SEK" },
+      { account: "2893", account_name: "Related party", debit: "0.00 SEK", credit: "5000.00 SEK" },
+    );
+    previous.vat.balances_at_cycle_start = [
+      { account: "4531", account_name: "Services from outside the EU", debit: "4000.00 SEK", credit: "0.00 SEK" },
+      { account: "2893", account_name: "Related party", debit: "0.00 SEK", credit: "4000.00 SEK" },
+    ];
+    const outcome = await run({ previous });
+    assert.equal(outcome.kind, "proposal");
+    assert.equal(outcome.canonical_outputs.bookkeeping.vat_period.declaration_boxes["22"], "1000.00 SEK");
+  });
+
+  await t.test("a period that closes no cycle carries the baseline forward untouched", async () => {
+    const { previous } = dueVatFixture();
+    const february = { id: "2026-02", kind: "ordinary", start: "2026-02-01", end: "2026-02-28" };
+    previous.through_period_id = "2026-01";
+    previous.through_date = "2026-01-31";
+    previous.reconciliation.period_id = "2026-01";
+    previous.vat.balances_at_cycle_start = [
+      { account: "4531", account_name: "Services from outside the EU", debit: "4000.00 SEK", credit: "0.00 SEK" },
+      { account: "2893", account_name: "Related party", debit: "0.00 SEK", credit: "4000.00 SEK" },
+    ];
+    const outcome = await run({ previous, selectedPeriod: february });
+    assert.equal(outcome.kind, "proposal");
+    // Carried through normalization, so it comes back in canonical account order.
+    const byAccount = (rows) => [...rows].sort((left, right) => left.account.localeCompare(right.account));
+    assert.deepEqual(
+      byAccount(outcome.canonical_outputs.bookkeeping.vat_period.balances_at_cycle_start),
+      byAccount(previous.vat.balances_at_cycle_start),
+    );
+  });
+
+  await t.test("closing a cycle records the position after the closing entry, not before", async () => {
+    // Caught by a demo run: recording the position before the entry left the
+    // quarter's VAT in the baseline, so the next quarter subtracted VAT that had
+    // already been settled and under-reported ruta 48 by exactly that amount.
+    const { previous } = dueVatFixture();
+    const outcome = await run({ previous });
+    const { balances_at_cycle_start: recorded } = outcome.canonical_outputs.bookkeeping.vat_period;
+    for (const account of ["2611", "2641"]) {
+      const row = recorded.find((item) => item.account === account);
+      assert.ok(
+        row === undefined || (row.debit === "0.00 SEK" && row.credit === "0.00 SEK"),
+        `${account} must stand at zero in the baseline the next cycle starts from`,
+      );
+    }
+    // Accounts the closing entry does not touch carry their balance across.
+    assert.equal(recorded.find((row) => row.account === "1930")?.debit, "100.00 SEK");
+    assert.equal(recorded.find((row) => row.account === "2650")?.credit, "20.00 SEK");
+  });
+
+  await t.test("a settled quarter does not leak into the next one", async () => {
+    // The whole chain: close one cycle, carry its baseline, and check that the
+    // next cycle reports only its own VAT.
+    const { previous } = dueVatFixture();
+    const first = await run({ previous });
+    assert.equal(first.kind, "proposal");
+    assert.equal(first.canonical_outputs.bookkeeping.vat_period.declaration_boxes["10"], "25.00 SEK");
+
+    const second = bookkeepingState({ balances: first.canonical_outputs.bookkeeping.ledger.closing_balances });
+    second.through_period_id = "2026-05";
+    second.through_date = "2026-05-31";
+    second.reconciliation.period_id = "2026-05";
+    second.ledger.verification_series = first.canonical_outputs.bookkeeping.ledger.verification_series;
+    second.vat = first.canonical_outputs.bookkeeping.vat_period;
+    const june = { id: "2026-06", kind: "ordinary", start: "2026-06-01", end: "2026-06-30" };
+    const outcome = await run({ previous: second, selectedPeriod: june });
+    assert.equal(outcome.kind, "proposal");
+    const { declaration_boxes: boxes } = outcome.canonical_outputs.bookkeeping.vat_period;
+    assert.equal(boxes["10"], "0.00 SEK", "the first quarter's output VAT must not be declared twice");
+    assert.equal(boxes["48"], "0.00 SEK");
+    assert.equal(boxes["49"], "0.00 SEK");
+  });
+
+  await t.test("reverse charge fills the base, the output and the deduction, and nets to zero", async () => {
+    const { previous } = dueVatFixture();
+    // Replace the domestic VAT with a purchase of services from outside the EU.
+    previous.ledger.balances = [
+      { account: "1930", account_name: "Bank", debit: "100.00 SEK", credit: "0.00 SEK" },
+      { account: "2081", account_name: "Share capital", debit: "0.00 SEK", credit: "100.00 SEK" },
+      { account: "4531", account_name: "Services from outside the EU", debit: "1000.00 SEK", credit: "0.00 SEK" },
+      { account: "2614", account_name: "Reverse charge output VAT", debit: "0.00 SEK", credit: "250.00 SEK" },
+      { account: "2645", account_name: "Calculated input VAT", debit: "250.00 SEK", credit: "0.00 SEK" },
+      { account: "2893", account_name: "Related party", debit: "0.00 SEK", credit: "1000.00 SEK" },
+    ];
+    const outcome = await run({ previous });
+    assert.equal(outcome.kind, "proposal");
+    const { declaration_boxes: boxes } = outcome.canonical_outputs.bookkeeping.vat_period;
+    assert.equal(boxes["22"], "1000.00 SEK");
+    assert.equal(boxes["30"], "250.00 SEK");
+    assert.equal(boxes["48"], "250.00 SEK");
+    assert.equal(boxes["10"], "0.00 SEK", "no domestic sales VAT, since there were no sales");
+    assert.equal(boxes["49"], "0.00 SEK");
+  });
+
+  await t.test("the closing entry clears every VAT account that moved", async () => {
+    const { previous } = dueVatFixture();
+    previous.ledger.balances.push(
+      { account: "2614", account_name: "Reverse charge output VAT", debit: "0.00 SEK", credit: "40.00 SEK" },
+      { account: "2645", account_name: "Calculated input VAT", debit: "40.00 SEK", credit: "0.00 SEK" },
+    );
+    const outcome = await run({ previous });
+    assert.equal(outcome.kind, "proposal");
+    const closing = outcome.canonical_outputs.bookkeeping.ledger.closing_balances;
+    for (const account of ["2611", "2641", "2614", "2645"]) {
+      const row = closing.find((item) => item.account === account);
+      assert.ok(
+        row === undefined || (row.debit === "0.00 SEK" && row.credit === "0.00 SEK"),
+        `${account} was left with a balance after closing`,
+      );
+    }
+  });
+
+  await t.test("a VAT account the mapping does not know is reported, and the period still completes", async () => {
+    const { previous } = dueVatFixture();
+    previous.ledger.balances.push(
+      { account: "2618", account_name: "Deferred output VAT", debit: "0.00 SEK", credit: "12.00 SEK" },
+      { account: "2699", account_name: "Something unmapped", debit: "0.00 SEK", credit: "7.00 SEK" },
+      { account: "1510", account_name: "Receivable", debit: "19.00 SEK", credit: "0.00 SEK" },
+    );
+    const outcome = await run({ previous });
+    assert.equal(outcome.kind, "proposal");
+    const codes = outcome.warnings.map((warning) => warning.code);
+    assert.ok(codes.includes("VAT_ACCOUNT_NOT_IN_MAP"));
+    // 2618 is deliberately excluded, so it must not be reported as a gap.
+    const reported = outcome.warnings.filter((warning) => warning.code === "VAT_ACCOUNT_NOT_IN_MAP");
+    assert.deepEqual(reported.map((warning) => warning.account), ["2699"]);
   });
 });
 

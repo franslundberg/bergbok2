@@ -42,7 +42,7 @@ const previous = createStateEnvelope({
       },
       open_items: { items: [], totals: { count: 0, by_kind: {} } },
       reconciliation: { period_id: "2026-02", accounts: [] },
-      vat: { frequency: "quarterly", cycle_start: "2026-01-01", cycle_end: "2026-03-31", due_in_period: false, input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650", status: "not_due", closing_transaction_source_id: null, declaration_boxes: {} },
+      vat: { frequency: "quarterly", cycle_start: "2026-01-01", cycle_end: "2026-03-31", due_in_period: false, input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650", status: "not_due", closing_transaction_source_id: null, declaration_boxes: {}, balances_at_cycle_start: [] },
     },
   },
 });
@@ -64,24 +64,9 @@ const bookkeepingInput = {
         { account: "2611", account_name: "Output VAT", debit: "0.00 SEK", credit: "25.00 SEK" },
       ],
     },
-    {
-      source_id: "vat-close:2026-Q1",
-      date: "2026-03-31",
-      description: "Close quarterly VAT",
-      evidence_document_ids: ["bank.pdf"],
-      lines: [
-        { account: "2611", account_name: "Output VAT", debit: "25.00 SEK", credit: "0.00 SEK" },
-        { account: "2650", account_name: "VAT settlement", debit: "0.00 SEK", credit: "25.00 SEK" },
-      ],
-    },
   ],
   open_item_changes: [],
   reconciliations: [{ account: "1930", external_closing_balance: "625.00 SEK", evidence_document_ids: ["bank.pdf"] }],
-  vat: {
-    status: "due",
-    closing_transaction_source_id: "vat-close:2026-Q1",
-    declaration_boxes: { "10": "25.00 SEK", "11": "0.00 SEK", "12": "0.00 SEK", "48": "0.00 SEK", "49": "25.00 SEK" },
-  },
 };
 const documents = [
   { document_id: "bank.pdf", filename: "bank.pdf", role: "evidence", media_type: "application/pdf", content_base64: Buffer.from("%PDF-demo").toString("base64") },
@@ -107,13 +92,13 @@ const caseBundle = sealContent({
     previous_state: previous,
     effective_policies: {
       core: { country: "SE", currency: "SEK", fiscal_year: { start: "2026-01-01", end: "2026-12-31" }, accounting_method: "invoice" },
-      bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" }, open_items: { supplier_payable: { accounts: ["2440"], side: "credit" }, customer_receivable: { accounts: ["1510"], side: "debit" }, related_party_payable: { accounts: ["2893"], side: "credit" }, other_current_payable: { accounts: ["2890"], side: "credit" }, other_current_receivable: { accounts: ["1680"], side: "debit" } } },
+      bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", chart: "BAS-2026", settlement_account: "2650", box_overrides: [] }, open_items: { supplier_payable: { accounts: ["2440"], side: "credit" }, customer_receivable: { accounts: ["1510"], side: "debit" }, related_party_payable: { accounts: ["2893"], side: "credit" }, other_current_payable: { accounts: ["2890"], side: "credit" }, other_current_receivable: { accounts: ["1680"], side: "debit" } } },
     },
     upstream_results: [],
   },
 });
 const bookkeepingOutcome = await consolidate(caseBundle);
-if (bookkeepingOutcome.kind !== "proposal") throw new Error(`Expected proposal, received ${bookkeepingOutcome.kind}`);
+if (bookkeepingOutcome.kind !== "proposal") throw new Error(`Expected proposal, received ${bookkeepingOutcome.kind}: ${JSON.stringify(bookkeepingOutcome.questions ?? bookkeepingOutcome.reasons ?? bookkeepingOutcome.issues)}`);
 const bookkeepingRunRef = createContentRef({
   schemaId: "se.bergbok.consolidation-run",
   stableId: "example-ab:2026-03:bookkeeping:run",

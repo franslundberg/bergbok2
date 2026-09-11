@@ -138,7 +138,8 @@ test("the public modules compose through an approved Payroll-to-Bookkeeping hand
   const reportBundle = await Artifacts.render(bookkeepingApproval.output_snapshot, "report-html-v1");
   assert.equal(reportBundle.payload.language, "en");
   const reportHtml = Buffer.from(reportBundle.payload.artifacts[0].content_base64, "base64").toString("utf8");
-  assert.match(reportHtml, /<h1>Bookkeeping report/);
+  assert.match(reportHtml, /<p class="eyebrow">Bookkeeping report<\/p>/);
+  assert.match(reportHtml, /<h1>Composition AB, May 2026<\/h1>/);
   assert.match(reportHtml, /Payroll 2026-05/);
   assert.match(reportHtml, /7010/);
   const payslipBundle = await Artifacts.render(payrollApproval.output_snapshot, "payslips-pdf-v1");
@@ -195,8 +196,8 @@ function bookkeepingCorePolicy() {
     chart_of_accounts: "BAS",
     vat_reporting: {
       frequency: "quarterly",
-      input_accounts: ["2641"],
-      output_accounts: ["2611"],
+      chart: "BAS-2026",
+      box_overrides: [],
       settlement_account: "2650",
     },
   };
@@ -208,12 +209,14 @@ function vatNotDue(cycleStart, cycleEnd) {
     cycle_start: cycleStart,
     cycle_end: cycleEnd,
     due_in_period: false,
-    input_accounts: ["2641"],
-    output_accounts: ["2611"],
+    chart: "BAS-2026",
+    input_accounts: [],
+    output_accounts: [],
     settlement_account: "2650",
     status: "not_due",
     closing_transaction_source_id: null,
     declaration_boxes: {},
+    balances_at_cycle_start: [],
   };
 }
 

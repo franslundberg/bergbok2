@@ -29,6 +29,8 @@ const LABELS = Object.freeze({
     through: "Till och med",
     summary: "Sammanfattning",
     notices: "Frågor, varningar och orsaker",
+    htmlNotices: "Frågor, noteringar och orsaker",
+    notes: "Noteringar",
     questions: "Frågor",
     warnings: "Varningar",
     reasons: "Orsaker",
@@ -85,6 +87,13 @@ const LABELS = Object.freeze({
     movementDebit: "Period debet",
     movementCredit: "Period kredit",
     closing: "Utgående",
+    show: "Visa",
+    balanceAccountUsedOne: "konto användes under perioden",
+    balanceAccountsUsedMany: "konton användes under perioden",
+    balanceAccountIncludedOne: "konto ingår i saldona till och med perioden",
+    balanceAccountsIncludedMany: "konton ingår i saldona till och med perioden",
+    balanceOtherAccountOne: "övrigt konto",
+    balanceOtherAccountsMany: "övriga konton",
     action: "Åtgärd",
     itemId: "Post-ID",
     kind: "Typ",
@@ -105,6 +114,8 @@ const LABELS = Object.freeze({
     reportingPeriod: "Redovisningsperiod",
     reportingFrequency: "Redovisningsintervall",
     dueInPeriod: "Ska redovisas i perioden",
+    vatAccountChart: "Kontoplan för moms",
+    vatBoxOverrides: "Avvikelser från kontoplanen",
     inputVatAccounts: "Konton för ingående moms",
     outputVatAccounts: "Konton för utgående moms",
     vatSettlementAccount: "Momsredovisningskonto",
@@ -113,6 +124,12 @@ const LABELS = Object.freeze({
     no: "Nej",
     quarterly: "Kvartalsvis",
     declarationBoxes: "Deklarationsrutor",
+    declarationBox: "Deklarationsruta",
+    vatBox: "Ruta",
+    vatBoxReference: "ruta",
+    vatPayable: "Moms att betala",
+    vatRefundable: "Moms att få tillbaka",
+    vatZero: "Ingen moms att betala eller få tillbaka",
     noVatActivity: "Ingen ingående eller utgående moms bokfördes i perioden.",
     vatPeriodMembership: "Perioden ingår i momsperioden",
     noVatReturnDue: "ingen momsredovisning förfaller i",
@@ -138,6 +155,8 @@ const LABELS = Object.freeze({
     through: "Through",
     summary: "Summary",
     notices: "Questions, warnings, and reasons",
+    htmlNotices: "Questions, notes, and reasons",
+    notes: "Notes",
     questions: "Questions",
     warnings: "Warnings",
     reasons: "Reasons",
@@ -194,6 +213,13 @@ const LABELS = Object.freeze({
     movementDebit: "Period debit",
     movementCredit: "Period credit",
     closing: "Closing",
+    show: "Show",
+    balanceAccountUsedOne: "account was used during the period",
+    balanceAccountsUsedMany: "accounts were used during the period",
+    balanceAccountIncludedOne: "account is included in balances through the period",
+    balanceAccountsIncludedMany: "accounts are included in balances through the period",
+    balanceOtherAccountOne: "other account",
+    balanceOtherAccountsMany: "other accounts",
     action: "Action",
     itemId: "Item ID",
     kind: "Kind",
@@ -214,6 +240,8 @@ const LABELS = Object.freeze({
     reportingPeriod: "Reporting period",
     reportingFrequency: "Reporting frequency",
     dueInPeriod: "Due in this period",
+    vatAccountChart: "VAT account chart",
+    vatBoxOverrides: "Deviations from the chart",
     inputVatAccounts: "Input VAT accounts",
     outputVatAccounts: "Output VAT accounts",
     vatSettlementAccount: "VAT settlement account",
@@ -222,6 +250,12 @@ const LABELS = Object.freeze({
     no: "No",
     quarterly: "Quarterly",
     declarationBoxes: "Declaration boxes",
+    declarationBox: "Declaration box",
+    vatBox: "Box",
+    vatBoxReference: "box",
+    vatPayable: "VAT to pay",
+    vatRefundable: "VAT to receive",
+    vatZero: "No VAT to pay or receive",
     noVatActivity: "No input or output VAT was posted in the period.",
     vatPeriodMembership: "The period is part of the VAT period",
     noVatReturnDue: "no VAT return is due in",
@@ -230,6 +264,71 @@ const LABELS = Object.freeze({
     lastNumberClosing: "Last number",
     value: "Value",
     previewNotice: "This is a proposal. Nothing has been approved, posted, paid, filed, or submitted.",
+  }),
+});
+
+// These are tax-form presentation labels, kept inside Artifacts so this renderer
+// does not depend on Bookkeeping's private BAS-account mapping implementation.
+const VAT_BOX_DESCRIPTIONS = Object.freeze({
+  sv: Object.freeze({
+    "05": "Momspliktig försäljning som inte ingår i ruta 06, 07 eller 08",
+    "06": "Momspliktiga uttag",
+    "07": "Beskattningsunderlag vid vinstmarginalbeskattning",
+    "08": "Hyresinkomster vid frivillig beskattning",
+    "10": "Utgående moms 25 %",
+    "11": "Utgående moms 12 %",
+    "12": "Utgående moms 6 %",
+    "20": "Inköp av varor från ett annat EU-land",
+    "21": "Inköp av tjänster från ett annat EU-land enligt huvudregeln",
+    "22": "Inköp av tjänster från land utanför EU",
+    "23": "Inköp av varor i Sverige som köparen är betalningsskyldig för",
+    "24": "Övriga inköp av tjänster i Sverige som köparen är betalningsskyldig för",
+    "30": "Utgående moms 25 %",
+    "31": "Utgående moms 12 %",
+    "32": "Utgående moms 6 %",
+    "35": "Försäljning av varor till annat EU-land",
+    "36": "Försäljning av varor utanför EU",
+    "37": "Mellanmans inköp av varor vid trepartshandel",
+    "38": "Mellanmans försäljning av varor vid trepartshandel",
+    "39": "Försäljning av tjänster till en beskattningsbar person i annat EU-land enligt huvudregeln",
+    "40": "Övrig försäljning av tjänster tillhandahållna utanför Sverige",
+    "41": "Försäljning när köparen är betalningsskyldig i Sverige",
+    "42": "Övrig försäljning m.m.",
+    "48": "Avdragsgill ingående moms",
+    "50": "Beskattningsunderlag vid import",
+    "60": "Utgående moms på import 25 %",
+    "61": "Utgående moms på import 12 %",
+    "62": "Utgående moms på import 6 %",
+  }),
+  en: Object.freeze({
+    "05": "Taxable sales not included in boxes 06, 07 or 08",
+    "06": "Taxable withdrawals",
+    "07": "Taxable basis under profit margin taxation",
+    "08": "Rental income subject to voluntary taxation",
+    "10": "Output VAT 25%",
+    "11": "Output VAT 12%",
+    "12": "Output VAT 6%",
+    "20": "Purchases of goods from another EU country",
+    "21": "Purchases of services from another EU country under the main rule",
+    "22": "Purchases of services from a country outside the EU",
+    "23": "Purchases of goods in Sweden for which the buyer is liable",
+    "24": "Other purchases of services in Sweden for which the buyer is liable",
+    "30": "Output VAT 25%",
+    "31": "Output VAT 12%",
+    "32": "Output VAT 6%",
+    "35": "Sales of goods to another EU country",
+    "36": "Sales of goods outside the EU",
+    "37": "Intermediary purchases of goods in triangular trade",
+    "38": "Intermediary sales of goods in triangular trade",
+    "39": "Sales of services to a taxable person in another EU country under the main rule",
+    "40": "Other sales of services supplied outside Sweden",
+    "41": "Sales for which the buyer is liable in Sweden",
+    "42": "Other sales etc.",
+    "48": "Deductible input VAT",
+    "50": "Taxable basis on imports",
+    "60": "Output VAT on imports 25%",
+    "61": "Output VAT on imports 12%",
+    "62": "Output VAT on imports 6%",
   }),
 });
 
@@ -299,6 +398,7 @@ export function buildReportModel(snapshot) {
   })) : [];
   const vat = proposal ? {
     ...bookkeeping.vat_period,
+    ...buildVatHtmlDisplay(bookkeeping.vat_period, bookkeeping.ledger.currency, source.language, labels),
     hasActivity: hasVatActivity(bookkeeping),
     frequencyDisplay: labels[bookkeeping.vat_period.frequency],
     reportingPeriod: bookkeeping.vat_period.cycle_start && bookkeeping.vat_period.cycle_end
@@ -335,18 +435,28 @@ export function buildReportModel(snapshot) {
   const header = {
     identity: [company.name, company.organizationNumber, `${labels.created} ${createdDisplay}`].filter(Boolean).join(" · "),
     context: `${period.coverageDisplay} · ${statusDisplay}`,
+    eyebrow: labels.title,
+    displayTitle: `${company.name}, ${formatPeriodTitle(period, source.language)}`,
+    organizationNumber: company.organizationNumber,
+    coverage: period.coverageDisplay,
+    status: statusDisplay,
+    statusTone: source.approval_status === "approved" ? "ok" : "attention",
+    created: createdDisplay,
   };
   const noticeGroups = [
     { id: "questions", title: labels.questions, items: questions },
-    { id: "warnings", title: labels.warnings, items: warnings },
+    { id: "warnings", title: labels.warnings, htmlTitle: labels.notes, items: warnings },
     { id: "reasons", title: labels.reasons, items: reasons },
   ].filter((group) => group.items.length);
+  const hasQuestions = questions.length > 0;
   const sections = [
     { id: "summary", kind: "paragraph", title: labels.summary, value: review.summary, emptyText: labels.none },
     ...(noticeGroups.length ? [{
       id: "notices",
       kind: "notices",
       title: labels.notices,
+      htmlTitle: hasQuestions ? labels.htmlNotices : labels.notes,
+      hasQuestions,
       groups: noticeGroups,
       emptyText: labels.none,
     }] : []),
@@ -429,6 +539,13 @@ function formatDisplayDate(value, language) {
 function formatMonthYear(value, language) {
   const parts = dateParts(value);
   return `${MONTHS[language][parts.month - 1]} ${parts.year}`;
+}
+
+function formatPeriodTitle(period, language) {
+  const match = /^(\d{4})-(\d{2})$/.exec(period.id);
+  if (!match) return period.id;
+  const month = Number(match[2]);
+  return month >= 1 && month <= 12 ? `${MONTHS[language][month - 1]} ${match[1]}` : period.id;
 }
 
 function formatDateParts(value, language) {
@@ -559,9 +676,10 @@ function assertKnownReportStructures(bookkeeping, delta, projected) {
   ], "Bookkeeping ledger");
   assertOnlyKeys(bookkeeping.open_items, ["opening", "changes", "closing", "totals"], "Bookkeeping open items");
   assertOnlyKeys(bookkeeping.vat_period, [
-    "frequency", "cycle_start", "cycle_end", "due_in_period", "input_accounts",
+    "frequency", "chart", "cycle_start", "cycle_end", "due_in_period", "input_accounts",
     "output_accounts", "settlement_account", "status",
-    "closing_transaction_source_id", "declaration_boxes",
+    "closing_transaction_source_id", "declaration_boxes", "notes",
+    "balances_at_cycle_start",
   ], "Bookkeeping VAT period");
   const vat = bookkeeping.vat_period;
   if (vat.frequency !== "quarterly"
@@ -581,9 +699,13 @@ function assertKnownReportStructures(bookkeeping, delta, projected) {
       || !vat.declaration_boxes || typeof vat.declaration_boxes !== "object" || Array.isArray(vat.declaration_boxes)) {
     throw new TypeError("Bookkeeping VAT period has an unsupported cadence or account policy");
   }
-  const boxKeys = Object.keys(vat.declaration_boxes).sort();
-  if ((vat.due_in_period && boxKeys.join(",") !== "10,11,12,48,49")
-      || (!vat.due_in_period && boxKeys.length !== 0)) {
+  // Which boxes a declaration carries follows the company's account mapping, so
+  // the shape is checked rather than a fixed list: every key a two-digit box
+  // number, and ruta 49 present, since that is the figure Skatteverket settles.
+  const boxKeys = Object.keys(vat.declaration_boxes);
+  if (vat.due_in_period
+    ? !boxKeys.includes("49") || !boxKeys.every((box) => /^\d{2}$/.test(box))
+    : boxKeys.length !== 0) {
     throw new TypeError("Bookkeeping VAT declaration boxes do not match the due state");
   }
   assertOnlyKeys(delta, [
@@ -627,12 +749,16 @@ function buildBalances(bookkeeping, labels) {
   const opening = balanceMap(bookkeeping.ledger.opening_balances ?? [], currency);
   const closing = balanceMap(bookkeeping.ledger.closing_balances ?? [], currency);
   const movement = new Map();
+  const usedInPeriod = new Set();
   for (const transaction of bookkeeping.ledger.transactions ?? []) {
     for (const line of transaction.lines ?? []) {
+      const debit = money(line.debit, currency);
+      const credit = money(line.credit, currency);
       const current = movement.get(line.account) ?? { name: line.account_name, net: 0n };
       current.name = line.account_name;
-      current.net += money(line.debit, currency) - money(line.credit, currency);
+      current.net += debit - credit;
       movement.set(line.account, current);
+      if (debit !== 0n || credit !== 0n) usedInPeriod.add(line.account);
     }
   }
   const accounts = [...new Set([...opening.keys(), ...movement.keys(), ...closing.keys()])].sort((a, b) => a.localeCompare(b));
@@ -644,6 +770,7 @@ function buildBalances(bookkeeping, labels) {
     return {
       account,
       accountName: closingRow.name ?? movementRow.name ?? openingRow.name ?? "",
+      usedInPeriod: usedInPeriod.has(account),
       opening: signedMoney(openingRow.net, currency),
       openingDisplay: sideMoneyDisplay(signedMoney(openingRow.net, currency), labels),
       movementDebit: formatMoney(movementRow.net > 0n ? movementRow.net : 0n, currency),
@@ -669,6 +796,31 @@ function hasVatActivity(bookkeeping) {
   return bookkeeping.ledger.transactions.some((transaction) => transaction.lines.some((line) =>
     accounts.has(line.account)
       && (money(line.debit, bookkeeping.ledger.currency) !== 0n || money(line.credit, bookkeeping.ledger.currency) !== 0n)));
+}
+
+function buildVatHtmlDisplay(vat, currency, language, labels) {
+  if (!vat.due_in_period) return { htmlDeclarationBoxRows: [], htmlVatResult: null };
+  const descriptions = VAT_BOX_DESCRIPTIONS[language];
+  const htmlDeclarationBoxRows = Object.entries(vat.declaration_boxes)
+    .filter(([box]) => box !== "49")
+    .map(([box, amount]) => ({ box, amount, minorUnits: money(amount, currency) }))
+    .filter((item) => item.minorUnits !== 0n)
+    .sort((left, right) => Number(left.box) - Number(right.box))
+    .map(({ box, amount }) => ({
+      box,
+      label: descriptions[box] ? `${labels.vatBox} ${box} — ${descriptions[box]}` : `${labels.vatBox} ${box}`,
+      amount,
+    }));
+  const net = money(vat.declaration_boxes["49"], currency);
+  const netLabel = net > 0n ? labels.vatPayable : net < 0n ? labels.vatRefundable : labels.vatZero;
+  return {
+    htmlDeclarationBoxRows,
+    htmlVatResult: {
+      box: "49",
+      label: `${netLabel} (${labels.vatBoxReference} 49)`,
+      amount: formatMoney(net < 0n ? -net : net, currency),
+    },
+  };
 }
 
 function normalizeNotices(items, textKey, labels) {
@@ -785,6 +937,8 @@ function buildCoreFacts(core, labels) {
   const frequency = take(rest, ["policies", "bookkeeping", "vat_reporting", "frequency"]);
   const vat = [
     ...labelledRow(labels.reportingFrequency, translate(frequency, frequency, labels)),
+    ...labelledRow(labels.vatAccountChart, take(rest, ["policies", "bookkeeping", "vat_reporting", "chart"])),
+    ...labelledRow(labels.vatBoxOverrides, joinList(take(rest, ["policies", "bookkeeping", "vat_reporting", "box_overrides"])?.map?.((entry) => entry?.box) ?? null)),
     ...labelledRow(labels.inputVatAccounts, joinList(take(rest, ["policies", "bookkeeping", "vat_reporting", "input_accounts"]))),
     ...labelledRow(labels.outputVatAccounts, joinList(take(rest, ["policies", "bookkeeping", "vat_reporting", "output_accounts"]))),
     ...labelledRow(labels.vatSettlementAccount, take(rest, ["policies", "bookkeeping", "vat_reporting", "settlement_account"])),

@@ -30,7 +30,7 @@ async function bookkeepingSnapshot(status = "preliminary", language = "en") {
         },
         open_items: { items: [], totals: { count: 0, by_kind: {} } },
         reconciliation: { period_id: "2026-04", accounts: [] },
-        vat: { frequency: "quarterly", cycle_start: "2026-04-01", cycle_end: "2026-06-30", due_in_period: false, input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650", status: "not_due", closing_transaction_source_id: null, declaration_boxes: {} },
+        vat: { frequency: "quarterly", cycle_start: "2026-04-01", cycle_end: "2026-06-30", due_in_period: false, input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650", status: "not_due", closing_transaction_source_id: null, declaration_boxes: {}, balances_at_cycle_start: [] },
       },
     },
   });
@@ -58,7 +58,7 @@ async function bookkeepingSnapshot(status = "preliminary", language = "en") {
       period: { id: "2026-05", kind: "ordinary", start: "2026-05-01", end: "2026-05-31" }, docset, previous_state: previous,
       effective_policies: {
         core: { country: "SE", currency: "SEK", fiscal_year: { start: "2026-01-01", end: "2026-12-31" }, accounting_method: "invoice" },
-        bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" } },
+        bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", chart: "BAS-2026", settlement_account: "2650", box_overrides: [] } },
       },
       upstream_results: [],
     },
@@ -101,7 +101,7 @@ async function classifiedSnapshot(kind, language = "sv") {
     caseRef: source.payload.outcome.case_ref,
     questions: kind === "needs_input" ? [{ question_id: "BKQ1", code: "MISSING_AMOUNT", prompt: "Vilket belopp gäller?" }] : [],
     reasons: kind === "out_of_scope" ? [{ code: "OUTSIDE_PROFILE", message: "Ärendet kräver stöd utanför piloten." }] : [],
-    warnings: [{ code: "CHECK_SOURCE", message: "Kontrollera underlaget." }],
+    warnings: [{ code: "CHECK_SOURCE", message: "Kontrollera underlaget.", evidence_document_ids: ["receipt.pdf"] }],
     review: {
       schema_version: "1.0",
       language,
@@ -123,6 +123,50 @@ async function classifiedSnapshot(kind, language = "sv") {
     stableId: `${kind}-snapshot`,
     version: 1,
     payload: { ...structuredClone(source.payload), run_ref: runRef, outcome, proposal_digest: null },
+  });
+}
+
+async function classifiedSnapshotForPeriod(kind, language, period) {
+  const source = await classifiedSnapshot(kind, language);
+  const payload = structuredClone(source.payload);
+  payload.context.period = period;
+  return sealContent({
+    schemaId: source.ref.schema_id,
+    schemaVersion: source.ref.schema_version,
+    stableId: `${kind}-${period.id}-snapshot`,
+    version: 1,
+    payload,
+  });
+}
+
+function snapshotWithVatPeriod(source, vatPeriod, stableId) {
+  const payload = structuredClone(source.payload);
+  payload.outcome.canonical_outputs.bookkeeping.vat_period = structuredClone(vatPeriod);
+  payload.outcome.canonical_outputs.period_delta.vat_period = structuredClone(vatPeriod);
+  const projected = payload.outcome.projected_state;
+  const resealedProjected = sealContent({
+    schemaId: projected.ref.schema_id,
+    schemaVersion: projected.ref.schema_version,
+    stableId: projected.ref.stable_id,
+    version: projected.ref.version,
+    payload: { ...projected.payload, vat: structuredClone(vatPeriod) },
+  });
+  payload.outcome.projected_state = resealedProjected;
+  payload.outcome.proposed_changes.find((change) => change.action === "replace_domain_state").state_ref = resealedProjected.ref;
+  payload.proposal_digest = proposalDigest(payload.outcome);
+  payload.run_ref = createContentRef({
+    schemaId: payload.run_ref.schema_id,
+    schemaVersion: payload.run_ref.schema_version,
+    stableId: payload.run_ref.stable_id,
+    version: payload.run_ref.version,
+    payload: payload.outcome,
+  });
+  return sealContent({
+    schemaId: source.ref.schema_id,
+    schemaVersion: source.ref.schema_version,
+    stableId,
+    version: source.ref.version,
+    payload,
   });
 }
 
@@ -167,7 +211,7 @@ async function bookkeepingStartSnapshot(language = "sv", core = {}) {
       period: { id: "Start", kind: "start", end: "2026-05-11" }, docset, previous_state: previous,
       effective_policies: {
         core: { country: "SE", currency: "SEK", fiscal_year: { start: "2026-01-01", end: "2026-12-31" }, accounting_method: "invoice" },
-        bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" } },
+        bookkeeping: { profile: "se-private-ab-invoice-calendar-demo-v1", verification_series: "A", chart_of_accounts: "BAS", vat_reporting: { frequency: "quarterly", chart: "BAS-2026", settlement_account: "2650", box_overrides: [] } },
       },
       upstream_results: [],
     },
@@ -181,7 +225,7 @@ async function bookkeepingStartSnapshot(language = "sv", core = {}) {
       policies: {
         bookkeeping: {
           chart_of_accounts: "BAS",
-          vat_reporting: { frequency: "quarterly", input_accounts: ["2641"], output_accounts: ["2611"], settlement_account: "2650" },
+          vat_reporting: { frequency: "quarterly", chart: "BAS-2026", settlement_account: "2650", box_overrides: [] },
         },
       },
       evidence_document_ids: ["registration.pdf"],
@@ -224,6 +268,15 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   const model = buildReportModel(snapshot);
   assert.equal(model.header.identity, "Example Ångström AB · 559999-9999 · Created 31 March 2026");
   assert.equal(model.header.context, "1–31 May 2026 · Proposal");
+  assert.equal(model.header.eyebrow, "Bookkeeping report");
+  assert.equal(model.header.displayTitle, "Example Ångström AB, May 2026");
+  assert.equal(model.header.organizationNumber, "559999-9999");
+  assert.equal(model.header.coverage, "1–31 May 2026");
+  assert.equal(model.header.status, "Proposal");
+  assert.equal(model.header.statusTone, "attention");
+  assert.equal(model.header.created, "31 March 2026");
+  assert.equal(model.balances.find((item) => item.account === "1930").usedInPeriod, true);
+  assert.equal(model.balances.find((item) => item.account === "2081").usedInPeriod, false);
   assert.deepEqual(model.sections.map((section) => section.id), [
     "summary", "core", "transactions", "reconciliations", "open_items",
     "verification", "vat", "balances", "evidence", "provenance",
@@ -234,36 +287,68 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.equal(sourceJson, prettyCanonicalJson(snapshot));
   assert.match(sourceJson, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
   const html = artifactBytes((await render(snapshot, "report-html-v1")).payload.artifacts[0]).toString("utf8");
-  assert.match(html, /<details>/);
+  assert.match(html, /<details class="transaction"/);
   assert.doesNotMatch(html, /<details open/);
-  assert.match(html, /Example Ångström AB · 559999-9999 · Created 31 March 2026/);
-  assert.match(html, /1–31 May 2026 · Proposal/);
+  assert.match(html, /<p class="eyebrow">Bookkeeping report<\/p>/);
+  assert.match(html, /<h1>Example Ångström AB, May 2026<\/h1>/);
+  assert.match(html, /<p class="lede">The bookkeeping for 2026-05 contains 1 verification \(A8\) totalling SEK 25\.00\./);
+  assert.match(html, /Organisation number <b>559999-9999<\/b>/);
+  assert.match(html, /Period <b>1–31 May 2026<\/b>/);
+  assert.match(html, /Status <span class="pill attention">Proposal<\/span>/);
+  assert.match(html, /Created <b>31 March 2026<\/b>/);
   assert.match(html, /Café AB charged SEK 25\.00 for coffee, booked to Other personnel costs \(7690\) against Bank \(1930\)\./);
   assert.doesNotMatch(html, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
   assert.match(html, /7690/);
   assert.match(html, /SEK\u00a025\.00/);
   assert.doesNotMatch(html, /25\.00 SEK/);
   assert.match(html, /<td>2081<\/td><td>Share capital<\/td><td class="money">-500\.00<\/td>.*<td class="money">-500\.00<\/td>/);
+  const balanceHtml = html.slice(html.indexOf("<h2>Account balances</h2>"), html.indexOf("<h2>Debug</h2>"));
+  assert.match(balanceHtml, /2 accounts were used during the period · 3 accounts are included in balances through the period/);
+  assert.match(balanceHtml, /<details class="history-details balance-details"><summary>Show 1 other account<\/summary>/);
+  assert.doesNotMatch(balanceHtml.slice(0, balanceHtml.indexOf("<details class=\"history-details balance-details\">")), /<td>2081<\/td>/);
+  assert.match(balanceHtml.slice(balanceHtml.indexOf("<details class=\"history-details balance-details\">")), /<td>2081<\/td>/);
   assert.match(html, /<td><code>7690<\/code><\/td><td>Other personnel costs<\/td><td class="money">25\.00<\/td><td class="money">0\.00<\/td>/);
   assert.doesNotMatch(html, /SEK\u00a0[\d,.]+ (Debit|Credit)/);
   assert.match(html, /1 entry · A8/);
   // Open items: Kvarstående poster reads as one sentence per item, linking to the
   // verification that created it; the raw open/settle log is folded into a details block.
   assert.match(html, /<p class="section-meta">Debts and claims unpaid at the end of the period\.<\/p><ul class="list"><li>Debt of SEK\u00a025\.00 to Café AB\. Due date: 2026-05-31\. See <a href="#verifikation-A8">A8<\/a>\.<\/li><\/ul>/);
-  assert.match(html, /<details><summary>Details \(1\)<\/summary>/);
+  assert.match(html, /<details class="history-details"><summary>Details \(1\)<\/summary>/);
   assert.match(html, /<td>2026-05-12<\/td><td>open<\/td><td>supplier:coffee<\/td>/);
   // Reconciliation status is translated, not the raw canonical enum value.
-  assert.match(html, /<td>1930<\/td><td>Reconciled<\/td>/);
+  assert.match(html, /<td>1930<\/td><td><span class="pill ok">Reconciled<\/span><\/td>/);
   assert.doesNotMatch(html, />reconciled</);
+  const attentionReconciliationHtml = renderReportHtml({
+    ...model,
+    sections: model.sections.map((section) => section.id === "reconciliations"
+      ? {
+          ...section,
+          items: [
+            { ...section.items[0], status: "mismatched", statusDisplay: "Mismatched" },
+            { ...section.items[0], account: "1910", status: "missing_evidence", statusDisplay: "Evidence missing" },
+          ],
+        }
+      : section),
+  });
+  assert.match(attentionReconciliationHtml, /<span class="pill attention">Mismatched<\/span>/);
+  assert.match(attentionReconciliationHtml, /<span class="pill attention">Evidence missing<\/span>/);
   assert.match(html, /No input or output VAT was posted in the period\. The period is part of the VAT period 1 April–30 June 2026; no VAT return is due in May 2026\./);
   assert.doesNotMatch(html, /Quarterly|2641|2611|2650/);
   assert.match(html, /Content-Security-Policy/);
+  assert.match(html, /font-src data:/);
+  assert.match(html, /@font-face \{ font-family: "Source Serif 4";[^}]+data:font\/woff2;base64,/);
+  assert.match(html, /@font-face \{ font-family: "IBM Plex Sans";[^}]+data:font\/woff2;base64,/);
+  assert.match(html, /@font-face \{ font-family: "IBM Plex Mono";[^}]+data:font\/woff2;base64,/);
+  assert.match(html, /@media \(prefers-color-scheme: dark\)/);
   assert.doesNotMatch(html, /<script/i);
+  assert.doesNotMatch(html, /<link\b/i);
+  assert.doesNotMatch(html, /@import|src:\s*url\(["']?https?:/i);
   assert.doesNotMatch(html, /Questions, warnings, and reasons/);
   assert.doesNotMatch(html, /Company facts/);
   assert.doesNotMatch(html, />Evidence<\/h2>/);
   assert.doesNotMatch(html, /<h2>Summary<\/h2>/);
-  assert.match(html, /<section class="report-summary"><p>The bookkeeping for 2026-05 contains 1 verification \(A8\) totalling SEK 25\.00\./);
+  assert.doesNotMatch(html, /report-summary/);
+  assert.doesNotMatch(html, /How this report was built|model cost|run statistics|multi-period timeline/i);
   const headings = [
     "Bookkeeping transactions", "Reconciliations", "Open items",
     "VAT", "Account balances", "Debug",
@@ -304,6 +389,15 @@ test("report JSON is exact and HTML is semantic, collapsed, escaped, and complet
   assert.match(hostileSummaryHtml, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
   assert.doesNotMatch(hostileSummaryHtml, /<img src=x/);
 
+  const hostileHeaderHtml = renderReportHtml({
+    ...model,
+    summary: '<img src=x onerror="alert(2)">',
+    header: { ...model.header, displayTitle: '<script>alert("title")</script>' },
+  });
+  assert.match(hostileHeaderHtml, /&lt;script&gt;alert\(&quot;title&quot;\)&lt;\/script&gt;/);
+  assert.match(hostileHeaderHtml, /&lt;img src=x onerror=&quot;alert\(2\)&quot;&gt;/);
+  assert.doesNotMatch(hostileHeaderHtml, /<script>|<img src=x/);
+
   const hostile = structuredClone(snapshot.payload);
   hostile.outcome.canonical_outputs.bookkeeping.ledger.transactions[0].description = "HOSTILE_CANONICAL_DESCRIPTION";
   hostile.outcome.canonical_outputs.period_delta.transactions[0].description = "HOSTILE_CANONICAL_DESCRIPTION";
@@ -340,11 +434,11 @@ test("company facts are grouped, localized, and never drop an unreported field",
   ]);
   assert.deepEqual(model.coreFacts[4].rows, [
     { label: "Redovisningsintervall", value: "Kvartalsvis" },
-    { label: "Konton för ingående moms", value: "2641" },
-    { label: "Konton för utgående moms", value: "2611" },
+    { label: "Kontoplan för moms", value: "BAS-2026" },
     { label: "Momsredovisningskonto", value: "2650" },
   ]);
   const html = artifactBytes((await render(await bookkeepingStartSnapshot("sv"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
+  assert.match(html, /<p class="eyebrow">Bokföringsrapport<\/p>\s+<h1>Fiktiv AB, Start<\/h1>/);
   assert.match(html, /<h2>Företagsuppgifter<\/h2><p class="section-meta">Företagsuppgifter som är nya eller uppdaterade under perioden\.<\/p><h3>Företag<\/h3><dl class="meta"><dt>Namn<\/dt><dd>Fiktiv AB<\/dd>/);
   assert.match(html, /<dd>Karl Gerhards väg 27<br>133 35 Saltsjöbaden<br>SE<\/dd>/);
   assert.doesNotMatch(html, /organization\.name|vat_reporting|input_accounts\[0\]/);
@@ -362,6 +456,7 @@ test("company facts are grouped, localized, and never drop an unreported field",
   ]);
   assert.deepEqual(english.coreFacts[3].rows[4], { label: "Accounting method", value: "Invoice method" });
   const englishHtml = artifactBytes((await render(await bookkeepingStartSnapshot("en"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
+  assert.match(englishHtml, /<h1>Fiktiv AB, Start<\/h1>/);
   assert.match(englishHtml, /<h2>Company facts<\/h2><p class="section-meta">Company facts that are new or updated in this period\.<\/p><h3>Company<\/h3>/);
 
   const extended = buildReportModel(await bookkeepingStartSnapshot("sv", {
@@ -479,14 +574,17 @@ test("the report model fails closed on summary and State inconsistencies", async
 
 test("unapproved reports are explicitly marked and approved reports are not", async () => {
   const preview = artifactBytes((await render(await bookkeepingSnapshot("preliminary", "sv"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
-  assert.match(preview, /Example Ångström AB · 559999-9999 · Skapad 31 mars 2026/);
-  assert.match(preview, /1–31 maj 2026 · Förslag/);
-  assert.match(preview, /Ingenting har godkänts/);
+  assert.match(preview, /<p class="eyebrow">Bokföringsrapport<\/p>/);
+  assert.match(preview, /<h1>Example Ångström AB, maj 2026<\/h1>/);
+  assert.match(preview, /Period <b>1–31 maj 2026<\/b>/);
+  assert.match(preview, /Status <span class="pill attention">Förslag<\/span>/);
+  assert.match(preview, /Skapad <b>31 mars 2026<\/b>/);
+  assert.doesNotMatch(preview, /class="notice"|Ingenting har godkänts/);
   assert.match(preview, /Ingen ingående eller utgående moms bokfördes i perioden/);
   assert.doesNotMatch(preview, /Kvartalsvis/);
-  assert.match(preview, /<td>1930<\/td><td>Avstämd<\/td>/);
+  assert.match(preview, /<td>1930<\/td><td><span class="pill ok">Avstämd<\/span><\/td>/);
   const approved = artifactBytes((await render(await bookkeepingSnapshot("approved", "sv"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
-  assert.match(approved, /1–31 maj 2026 · Godkänd version 1/);
+  assert.match(approved, /Status <span class="pill ok">Godkänd version 1<\/span>/);
   assert.match(approved, /25,00\u00a0kr/);
   assert.match(approved, /Momsen har inte lyfts eftersom underlaget saknar specificerad moms\./);
   assert.doesNotMatch(approved, /INTERNAL_CANONICAL_COFFEE_DESCRIPTION/);
@@ -498,39 +596,82 @@ test("unapproved reports are explicitly marked and approved reports are not", as
 test("VAT artifacts use deterministic cycle dates from Bookkeeping v3", async () => {
   const source = await bookkeepingSnapshot("approved");
   const reportModel = buildReportModel(source);
-  const reportHtml = renderReportHtml({
+  const activeNotDueHtml = renderReportHtml({
     ...reportModel,
     sections: reportModel.sections.map((section) => section.id === "vat"
-      ? {
-          ...section,
-          value: {
-            ...section.value,
-            hasActivity: true,
-            due_in_period: true,
-            closing_transaction_source_id: "vat-close:2026-Q2",
-            declaration_boxes: { "10": "25.00 SEK", "11": "0.00 SEK", "12": "0.00 SEK", "48": "0.00 SEK", "49": "25.00 SEK" },
-          },
-        }
+      ? { ...section, value: { ...section.value, hasActivity: true } }
       : section),
   });
-  assert.match(reportHtml, /Reporting frequency/);
-  assert.match(reportHtml, /Quarterly/);
-  assert.match(reportHtml, /Declaration boxes/);
-  const reportPdfText = await pdfText(await renderReportPdf({
-    ...reportModel,
-    sections: reportModel.sections.map((section) => section.id === "vat"
-      ? {
-          ...section,
-          value: {
-            ...section.value,
-            hasActivity: true,
-            due_in_period: true,
-            closing_transaction_source_id: "vat-close:2026-Q2",
-            declaration_boxes: { "10": "25.00 SEK", "11": "0.00 SEK", "12": "0.00 SEK", "48": "0.00 SEK", "49": "25.00 SEK" },
-          },
-        }
-      : section),
-  }));
+  const activeNotDueVat = activeNotDueHtml.slice(
+    activeNotDueHtml.indexOf("<h2>VAT</h2>"),
+    activeNotDueHtml.indexOf("<h2>Account balances</h2>"),
+  );
+  assert.match(activeNotDueVat, /<dt>Reporting frequency<\/dt><dd>Quarterly<\/dd>/);
+  assert.match(activeNotDueVat, /<dt>Reporting period<\/dt>/);
+  assert.match(activeNotDueVat, /<dt>Due in this period<\/dt><dd>No<\/dd>/);
+  assert.doesNotMatch(activeNotDueVat, /<dt>Status<\/dt>|Input VAT accounts|Output VAT accounts|VAT settlement account|VAT closing transaction|Declaration boxes|<table>/);
+  const canonicalVat = source.payload.outcome.canonical_outputs.bookkeeping.vat_period;
+  const positiveSnapshot = snapshotWithVatPeriod(source, {
+    ...canonicalVat,
+    due_in_period: true,
+    status: "due",
+    closing_transaction_source_id: "vat-close:2026-Q2",
+    declaration_boxes: { "10": "25.00 SEK", "11": "0.00 SEK", "12": "0.00 SEK", "48": "0.00 SEK", "49": "25.00 SEK" },
+  }, "positive-vat-snapshot");
+  const positiveModel = buildReportModel(positiveSnapshot);
+  const reportHtml = renderReportHtml(positiveModel);
+  const dueVat = reportHtml.slice(
+    reportHtml.indexOf("<h2>VAT</h2>"),
+    reportHtml.indexOf("<h2>Account balances</h2>"),
+  );
+  assert.match(dueVat, /<dt>Reporting frequency<\/dt><dd>Quarterly<\/dd>/);
+  assert.match(dueVat, /<dt>Due in this period<\/dt><dd>Yes<\/dd>/);
+  assert.match(dueVat, /<th>Declaration box<\/th>/);
+  assert.match(dueVat, /Box 10 — Output VAT 25%/);
+  assert.doesNotMatch(dueVat, /Box 11|Box 12|Box 48/);
+  assert.match(dueVat, /VAT to pay \(box 49\)<\/td><td class="money">SEK\u00a025\.00<\/td>/);
+  assert.doesNotMatch(dueVat, /<dt>Status<\/dt>|Input VAT accounts|Output VAT accounts|VAT settlement account|VAT closing transaction/);
+
+  const unknownSnapshot = snapshotWithVatPeriod(source, {
+    ...canonicalVat,
+    due_in_period: true,
+    status: "due",
+    closing_transaction_source_id: "vat-close:unknown-box",
+    declaration_boxes: { "49": "1.00 SEK", "99": "1.00 SEK" },
+  }, "unknown-html-vat-box-snapshot");
+  assert.match(renderReportHtml(buildReportModel(unknownSnapshot)), /<td>Box 99<\/td>/);
+
+  const swedishSource = await bookkeepingSnapshot("approved", "sv");
+  const swedishVat = swedishSource.payload.outcome.canonical_outputs.bookkeeping.vat_period;
+  const refundSnapshot = snapshotWithVatPeriod(swedishSource, {
+    ...swedishVat,
+    due_in_period: true,
+    status: "due",
+    closing_transaction_source_id: "vat-closing",
+    declaration_boxes: {
+      "10": "0.00 SEK", "22": "1749.00 SEK", "30": "437.00 SEK", "48": "1588.00 SEK",
+      "49": "-400.00 SEK", "50": "0.00 SEK", "60": "751.00 SEK",
+    },
+  }, "refund-vat-snapshot");
+  const refundHtml = renderReportHtml(buildReportModel(refundSnapshot));
+  const refundVat = refundHtml.slice(refundHtml.indexOf("<h2>Moms</h2>"), refundHtml.indexOf("<h2>Kontosaldon</h2>"));
+  assert.deepEqual([...refundVat.matchAll(/<tr><td>Ruta (\d{2}) —/g)].map((match) => match[1]), ["22", "30", "48", "60"]);
+  assert.match(refundVat, /Ruta 22 — Inköp av tjänster från land utanför EU/);
+  assert.match(refundVat, /Moms att få tillbaka \(ruta 49\)<\/td><td class="money">400,00\u00a0kr<\/td>/);
+
+  const zeroSnapshot = snapshotWithVatPeriod(source, {
+    ...canonicalVat,
+    due_in_period: true,
+    status: "due",
+    closing_transaction_source_id: "vat-close:zero",
+    declaration_boxes: { "10": "0.00 SEK", "49": "0.00 SEK" },
+  }, "zero-vat-snapshot");
+  const zeroHtml = renderReportHtml(buildReportModel(zeroSnapshot));
+  const zeroVat = zeroHtml.slice(zeroHtml.indexOf("<h2>VAT</h2>"), zeroHtml.indexOf("<h2>Account balances</h2>"));
+  assert.doesNotMatch(zeroVat, /<h3>Declaration boxes<\/h3>|<table>/);
+  assert.match(zeroVat, /<strong>No VAT to pay or receive \(box 49\): SEK\u00a00\.00<\/strong>/);
+
+  const reportPdfText = await pdfText(await renderReportPdf(positiveModel));
   assert.match(reportPdfText, /Reporting frequency/);
   assert.match(reportPdfText, /Quarterly/);
   assert.match(reportPdfText, /Declaration boxes/);
@@ -557,14 +698,93 @@ test("VAT artifacts use deterministic cycle dates from Bookkeeping v3", async ()
   assert.match(text, /vat-close:2026-Q2/);
 });
 
+test("the eSKD file carries every box the mapping fills, not only domestic VAT", async () => {
+  // A real quarter from the Fiktiv AB demo: no sales at all, reverse charge on
+  // services from outside the EU, and imported goods. Before the mapping, a
+  // declaration like this went out as domestic VAT and nothing else.
+  const source = await bookkeepingSnapshot("approved");
+  const payload = structuredClone(source.payload);
+  payload.outcome.canonical_outputs.bookkeeping.vat_period = {
+    frequency: "quarterly",
+    chart: "BAS-2026",
+    cycle_start: "2026-07-01",
+    cycle_end: "2026-09-30",
+    due_in_period: true,
+    input_accounts: ["2641", "2645"],
+    output_accounts: ["2614", "2615"],
+    settlement_account: "2650",
+    status: "due",
+    closing_transaction_source_id: "vat-close:2026-Q3",
+    notes: [],
+    balances_at_cycle_start: [],
+    declaration_boxes: {
+      "10": "0.00 SEK",
+      "22": "1749.00 SEK",
+      "30": "437.00 SEK",
+      "48": "1588.00 SEK",
+      "49": "-400.00 SEK",
+      "50": "3009.00 SEK",
+      "60": "751.00 SEK",
+    },
+  };
+  payload.proposal_digest = proposalDigest(payload.outcome);
+  const snapshot = sealContent({ schemaId: source.ref.schema_id, schemaVersion: "2.0", stableId: "q3-vat-snapshot", version: "approved", payload });
+  const xml = artifactBytes((await render(snapshot, "vat-xml-v1")).payload.artifacts[0]).toString("latin1");
+
+  assert.match(xml, /<InkopTjanstUtomEg>1749<\/InkopTjanstUtomEg>/);
+  assert.match(xml, /<MomsInkopUtgHog>437<\/MomsInkopUtgHog>/);
+  assert.match(xml, /<MomsUlagImport>3009<\/MomsUlagImport>/);
+  assert.match(xml, /<MomsImportUtgHog>751<\/MomsImportUtgHog>/);
+  assert.match(xml, /<MomsIngAvdr>1588<\/MomsIngAvdr>/);
+  assert.match(xml, /<MomsBetala>-400<\/MomsBetala>/);
+  // A company with no sales must not claim domestic output VAT.
+  assert.doesNotMatch(xml, /MomsUtgHog/);
+  // Elements follow box order, which is the order the form is laid out in.
+  const order = [...xml.matchAll(/<(\w+)>-?\d+<\/\1>/g)]
+    .map((match) => match[1])
+    .filter((element) => element !== "Period");
+  assert.deepEqual(order, [
+    "InkopTjanstUtomEg", "MomsInkopUtgHog", "MomsIngAvdr", "MomsUlagImport",
+    "MomsImportUtgHog", "MomsBetala",
+  ]);
+});
+
+test("a declaration box with no eSKD element fails rather than vanishing", async () => {
+  const source = await bookkeepingSnapshot("approved");
+  const payload = structuredClone(source.payload);
+  payload.outcome.canonical_outputs.bookkeeping.vat_period = {
+    frequency: "quarterly",
+    chart: "BAS-2026",
+    cycle_start: "2026-07-01",
+    cycle_end: "2026-09-30",
+    due_in_period: true,
+    input_accounts: ["2641"],
+    output_accounts: ["2611"],
+    settlement_account: "2650",
+    status: "due",
+    closing_transaction_source_id: "vat-close:2026-Q3",
+    notes: [],
+    balances_at_cycle_start: [],
+    declaration_boxes: { "49": "0.00 SEK", "99": "100.00 SEK" },
+  };
+  payload.proposal_digest = proposalDigest(payload.outcome);
+  const snapshot = sealContent({ schemaId: source.ref.schema_id, schemaVersion: "2.0", stableId: "unknown-box-snapshot", version: "approved", payload });
+  await assert.rejects(() => render(snapshot, "vat-xml-v1"), /VAT box 99 has no eSKD element/);
+});
+
 test("needs-input and out-of-scope outcomes use the same complete report pipeline", async () => {
   const needsInput = buildReportModel(await classifiedSnapshot("needs_input"));
   assert.equal(needsInput.outcomeKind, "needs_input");
   assert.equal(needsInput.questions[0].text, "Vilket belopp gäller?");
   assert.deepEqual(needsInput.transactions, []);
   const needsHtml = artifactBytes((await render(await classifiedSnapshot("needs_input"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
-  assert.match(needsHtml, /Frågor, varningar och orsaker/);
+  assert.match(needsHtml, /<h1>example-ab, maj 2026<\/h1>/);
+  assert.match(needsHtml, /Status <span class="pill attention">Behöver svar<\/span>/);
+  assert.match(needsHtml, /<div class="attention-panel"><h3>Frågor<\/h3>/);
+  assert.match(needsHtml, /Frågor, noteringar och orsaker/);
   assert.match(needsHtml, /Vilket belopp gäller\?/);
+  assert.match(needsHtml, /<h3>Noteringar<\/h3>[\s\S]*Kontrollera underlaget\./);
+  assert.doesNotMatch(needsHtml, /MISSING_AMOUNT|CHECK_SOURCE|receipt\.pdf/);
   assert.match(needsHtml, /Verifikationer<\/h2><p class="empty">Inga\.<\/p>/);
   assert.match(needsHtml, /Öppna poster<\/h2><p>Inga öppna poster vid periodens slut\.<\/p>/);
   assert.doesNotMatch(needsHtml, /Förändringar<\/h3>|Kvarstående poster<\/h3>/);
@@ -572,6 +792,27 @@ test("needs-input and out-of-scope outcomes use the same complete report pipelin
   const outside = buildReportModel(await classifiedSnapshot("out_of_scope"));
   assert.equal(outside.outcomeKind, "out_of_scope");
   assert.equal(outside.reasons[0].text, "Ärendet kräver stöd utanför piloten.");
+  const outsideHtml = artifactBytes((await render(await classifiedSnapshot("out_of_scope"), "report-html-v1")).payload.artifacts[0]).toString("utf8");
+  assert.match(outsideHtml, /Status <span class="pill attention">Utanför stöd<\/span>/);
+  const outsideNotices = outsideHtml.slice(
+    outsideHtml.indexOf("<h2>Noteringar</h2>"),
+    outsideHtml.indexOf("<h2>Verifikationer</h2>"),
+  );
+  assert.match(outsideNotices, /<h2>Noteringar<\/h2><ul class="list notes-list"><li>Kontrollera underlaget\.<\/li><li>Ärendet kräver stöd utanför piloten\.<\/li><\/ul><\/section>/);
+  assert.doesNotMatch(outsideNotices, /<div class="attention-panel">|CHECK_SOURCE|OUTSIDE_PROFILE|receipt\.pdf/);
+
+  const weekly = await classifiedSnapshotForPeriod("needs_input", "en", {
+    id: "2026-W23", kind: "ordinary", start: "2026-06-01", end: "2026-06-07",
+  });
+  const weeklyHtml = artifactBytes((await render(weekly, "report-html-v1")).payload.artifacts[0]).toString("utf8");
+  assert.match(weeklyHtml, /<h1>example-ab, 2026-W23<\/h1>/);
+  assert.doesNotMatch(weeklyHtml, /<h1>[^<]*June 2026<\/h1>/);
+
+  const imported = await classifiedSnapshotForPeriod("needs_input", "sv", {
+    id: "Import", kind: "import", end: "2026-04-30",
+  });
+  const importedHtml = artifactBytes((await render(imported, "report-html-v1")).payload.artifacts[0]).toString("utf8");
+  assert.match(importedHtml, /<h1>example-ab, Import<\/h1>/);
 });
 
 test("unrelated SIE and payslip profiles still render from OutputSnapshot v2", async () => {
