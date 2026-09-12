@@ -20,6 +20,12 @@ compatible with the Demo 5 authentication flow.
    `npm run dev`.
 6. Open `http://127.0.0.1:3006`.
 
+`OPENAI_MODEL` and `OPENAI_REASONING_EFFORT` configure the conversational chat.
+`BOOKKEEPING_MODEL` independently selects the model used for Bookkeeping
+assessments: `gpt-5.6-luna` (the default) or `gpt-5.6-sol`. Both Bookkeeping
+profiles use high reasoning. Restart `npm run worker` after changing
+`BOOKKEEPING_MODEL`.
+
 After login, the left column remains the company and status anchor. A shared
 context bar spans the conversation and workbench: it shows Bokföring, the
 selected period, its status, and the current activity. Selecting a period in

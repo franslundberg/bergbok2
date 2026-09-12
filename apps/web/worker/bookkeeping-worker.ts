@@ -1,11 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { Bookkeeping } from "@bergbok/modular-system";
 import { appendEvent, companyRecord, COMPANY_ID, periodValue } from "../lib/bergbok/application.ts";
+import { bookkeepingModelConfig } from "../lib/bergbok/config.ts";
 import { getDatabase, type BergbokDatabase } from "../lib/bergbok/database.ts";
 import { effectivePoliciesForYear } from "../lib/bergbok/pilot-policy.ts";
 import type { BookkeepingJobPhase } from "../lib/bergbok/types.ts";
 
 type JobRow = { id: string; company_id: string; period_id: string; created_by: string };
+type BookkeepingVariant = ReturnType<typeof bookkeepingModelConfig>["variant"];
+type ConsolidateBookkeeping = (
+  caseBundle: Parameters<typeof Bookkeeping.consolidate>[0],
+  variant: BookkeepingVariant,
+) => ReturnType<typeof Bookkeeping.consolidate>;
+
+const consolidateBookkeeping = Bookkeeping.consolidate as unknown as ConsolidateBookkeeping;
 const STALE_AFTER_MS = 90_000;
 
 export function recoverStaleJobs(database = getDatabase(), now = Date.now()) {
@@ -45,7 +53,8 @@ export function claimJob(database = getDatabase(), now = Date.now()): JobRow | n
 export async function processJob(
   job: JobRow,
   database: BergbokDatabase = getDatabase(),
-  consolidate = Bookkeeping.consolidate,
+  consolidate: ConsolidateBookkeeping = consolidateBookkeeping,
+  variant: BookkeepingVariant = bookkeepingModelConfig().variant,
 ) {
   if (job.company_id !== COMPANY_ID) throw new Error("Worker received an unknown company");
   appendEvent(
@@ -85,7 +94,7 @@ export async function processJob(
       context: period.kind === "start" ? { onboarding: { start_date: "2026-05-12" } } : {},
     });
     updateJobPhase(database, job, "analyzing");
-    const outcome = await consolidate(caseBundle);
+    const outcome = await consolidate(caseBundle, variant);
     updateJobPhase(database, job, "recording");
     const stored = await record.record(caseBundle.ref, outcome);
     const runId = randomUUID();
@@ -164,13 +173,14 @@ function updateJobPhase(database: BergbokDatabase, job: JobRow, phase: Bookkeepi
 }
 
 async function main() {
+  const { model, variant } = bookkeepingModelConfig();
   const database = getDatabase();
   recoverStaleJobs(database);
-  console.info("[bookkeeping-worker] ready");
+  console.info(`[bookkeeping-worker] ready model=${model}`);
   while (true) {
     const job = claimJob(database);
     if (job)
-      await processJob(job, database).catch((error) =>
+      await processJob(job, database, consolidateBookkeeping, variant).catch((error) =>
         console.error("[bookkeeping-worker]", error instanceof Error ? error.message : error),
       );
     else await new Promise((resolve) => setTimeout(resolve, 750));

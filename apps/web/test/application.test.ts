@@ -48,6 +48,7 @@ import {
 import { messagesForNewClaims, sanitizeAssistantParts } from "../lib/bergbok/chat-history.ts";
 import { materializeChatSnapshot } from "../lib/bergbok/snapshot.ts";
 import { formatElapsed } from "../lib/bergbok/job-progress.ts";
+import { bookkeepingModelConfig } from "../lib/bergbok/config.ts";
 import { formatResultReportMoney } from "../lib/bergbok/result-report-view.ts";
 import { claimWorkContextNavigation } from "../lib/bergbok/workbench-navigation.ts";
 import {
@@ -77,6 +78,42 @@ const session = {
   email: "owner@example.se",
   expiresAt: Date.now() + 60_000,
 };
+
+test("bookkeeping model configuration is independent, validated, and defaults to Luna", () => {
+  const previousBookkeepingModel = process.env.BOOKKEEPING_MODEL;
+  const previousChatModel = process.env.OPENAI_MODEL;
+  try {
+    delete process.env.BOOKKEEPING_MODEL;
+    process.env.OPENAI_MODEL = "gpt-5.6-sol";
+    assert.deepEqual(bookkeepingModelConfig(), {
+      model: "gpt-5.6-luna",
+      variant: { id: "openai-gpt-5.6-luna-high-v3" },
+    });
+
+    process.env.BOOKKEEPING_MODEL = "   ";
+    assert.equal(bookkeepingModelConfig().variant.id, "openai-gpt-5.6-luna-high-v3");
+
+    process.env.BOOKKEEPING_MODEL = "gpt-5.6-luna";
+    assert.equal(bookkeepingModelConfig().variant.id, "openai-gpt-5.6-luna-high-v3");
+
+    process.env.BOOKKEEPING_MODEL = "gpt-5.6-sol";
+    assert.deepEqual(bookkeepingModelConfig(), {
+      model: "gpt-5.6-sol",
+      variant: { id: "openai-gpt-5.6-sol-high-v3" },
+    });
+
+    process.env.BOOKKEEPING_MODEL = "gpt-5.6-unknown";
+    assert.throws(
+      () => bookkeepingModelConfig(),
+      /BOOKKEEPING_MODEL must be gpt-5\.6-luna or gpt-5\.6-sol/,
+    );
+  } finally {
+    if (previousBookkeepingModel === undefined) delete process.env.BOOKKEEPING_MODEL;
+    else process.env.BOOKKEEPING_MODEL = previousBookkeepingModel;
+    if (previousChatModel === undefined) delete process.env.OPENAI_MODEL;
+    else process.env.OPENAI_MODEL = previousChatModel;
+  }
+});
 
 test("demo passwords enforce the configured length boundaries", () => {
   const minimum = "x".repeat(PASSWORD_MIN_LENGTH);
@@ -877,8 +914,12 @@ test("worker records deterministic needs-input outcomes and timeline questions",
       "preparing",
     );
     const observedPhases: string[] = [];
-    const result = await processJob(job, database, async (caseBundle) =>
-      (() => {
+    let observedVariant: unknown;
+    const result = await processJob(
+      job,
+      database,
+      async (caseBundle, variant) => {
+        observedVariant = variant;
         observedPhases.push(
           (
             database.prepare("SELECT phase FROM bookkeeping_jobs WHERE id=?").get(job.id) as {
@@ -900,7 +941,8 @@ test("worker records deterministic needs-input outcomes and timeline questions",
           },
           provenance: { module_id: "test.bookkeeping", module_version: "1" },
         });
-      })(),
+      },
+      { id: "openai-gpt-5.6-sol-high-v3" },
     );
     assert.equal(result.outcome.kind, "needs_input");
     const storedJob = database
@@ -908,6 +950,7 @@ test("worker records deterministic needs-input outcomes and timeline questions",
       .get(job.id) as { status: string; phase: string };
     assert.equal(storedJob.status, "needs_input");
     assert.deepEqual(observedPhases, ["analyzing"]);
+    assert.deepEqual(observedVariant, { id: "openai-gpt-5.6-sol-high-v3" });
     assert.equal(storedJob.phase, "recording");
     const event = conversationEvents(0, database).at(-1);
     assert.equal(event?.type, "bookkeeping_needs_input");
